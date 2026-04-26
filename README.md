@@ -87,13 +87,31 @@ Their core workflow involves:
 
 ## Running the Project
 
-### Setup
+### Ollama Setup
+
+You can download and setup Ollama by following the instructions in their documentation: [Ollama Guide](https://docs.ollama.com/quickstart)
+
+Once setup to start the local LLM server you can run
+
+```bash
+ollama serve
+```
+
+To test it's running correctly open a browser and navigate to ```127.0.0.1:11434```
+
+A list of available models can be found at [ollama models](https://ollama.com/search) and to download a model you can run
+
+```bash
+ollama pull <model_name>
+```
+
+### Setup Venv
 
 ```bash
 uv sync
 ```
 
-Now actiavate the virtual environment:
+Now activate the virtual environment
 
 ```bash
 source .venv/bin/activate
@@ -107,7 +125,7 @@ change to app directory
 cd app
 ```
 
-then run:
+then run
 
 ```bash
 uvicorn main:app --reload --host 0.0.0.0 --port 8000
@@ -119,4 +137,4 @@ Once loaded, you can access the UI at `http://localhost:8000` and try asking que
 
 Which transaction type has the most fraud?
 
-This will trigger the LLM to generate a SQL query, execute it against the SQLite database, and return the results in the UI. You can then explore the insights and try generating fraud rules based on the patterns you find!
+This will trigger the LLM to generate a SQL query, execute it against the SQLite database, and return the results in the UI. You can then explore the insights and try generating fraud rules based on the patterns you find.
