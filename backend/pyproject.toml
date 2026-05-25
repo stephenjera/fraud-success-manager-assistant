@@ -1,0 +1,42 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "botocore>=1.43.12",
+    "fastapi>=0.136.1",
+    "litellm>=1.85.0",
+    "pandas>=3.0.3",
+    "pydantic-settings>=2.14.1",
+    "pydantic>=2.13.4",
+    "uvicorn>=0.47.0",
+    "colorlog>=6.10.1",
+]
+
+[tool.ruff.lint]
+select = [
+    "ALL", # All rules
+    "E",   # Pycodestyle errors
+    "F",   # Pyflakes
+    "I",   # Import sorting
+    "D",   # Docstring rules
+    "ANN", # Type annotation rules
+    "B",   # Bugbear
+    "UP",  # Pyupgrade
+]
+ignore = [
+    "D203", # One-blank-line-before-class (conflicts with D211)
+    "D213", # Multi-line docstring summary on first line (Google style uses second line)
+    "S608"  # SQL injection risk when using f-strings
+]
+
+# Docstring style
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[dependency-groups]
+dev = [
+    "ipykernel>=7.2.0",
+]
