@@ -1,39 +1,56 @@
-export type Insight = {
-  summary: string;
-  risk_level: "low" | "medium" | "high" | "unknown";
-  key_findings: string[];
-};
+export interface ChatMessage {
+  id: string;
+  sender: "user" | "agent";
+  text: string;
+  rationale?: string;
+  explore_sql?: string;
+  rule_predicate?: string;
+  timestamp: Date;
+}
 
-export type FraudRule = {
-  rule_sql_where: string;
-  description: string;
-  confidence: number;
-};
-
-export type QueryResponse = {
-  sql: string | null;
-  explanation: string | null;
-  confidence: number | null;
-  results: Record<string, unknown>[] | null;
-  error: string | null;
-  insight: Insight | null;
-  rule: FraudRule | null;
-};
-
-export type InvestigationStep = {
-  step_type: string;
-  input: string | Record<string, unknown>;
-  output: Record<string, unknown>;
-};
-
-export type InvestigationSession = {
+export interface ExploreRequest {
   session_id: string;
-  initial_question: string;
-  steps: InvestigationStep[];
-  current_sql?: string | null;
-  current_results?: Record<string, unknown>[] | null;
-  current_insight?: string | null;
-  current_rule?: string | null;
-  confidence?: number;
-  done?: boolean;
-};
+  user_prompt: string;
+  current_rule_state?: string | null;
+}
+
+export interface ExploreResponse {
+  session_id: string;
+  rationale: string;
+  explore_sql: string;
+  rule_predicate: string | null;
+  is_exploratory_only: boolean;
+}
+
+export interface ExecuteRequest {
+  session_id?: string;
+  sql_query: string;
+}
+
+export interface DataGridResponse {
+  columns: string[];
+  rows: any[][];
+  execution_time_ms: number;
+}
+
+export interface BacktestRequest {
+  where_clause: string;
+}
+
+export interface BacktestMetrics {
+  true_positives: number;
+  false_positives: number;
+  false_positive_ratio: number;
+  total_fraud_value_saved_usd: number;
+}
+
+export interface TimelineDataPoint {
+  date: string;
+  fraud_blocked: number;
+  legitimate_blocked: number;
+}
+
+export interface BacktestResponse {
+  metrics: BacktestMetrics;
+  timeline_series: TimelineDataPoint[];
+}

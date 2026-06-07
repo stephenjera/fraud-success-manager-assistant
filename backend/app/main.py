@@ -1,103 +1,205 @@
-import uuid
-from contextlib import asynccontextmanager
+"""FastAPI operational routing hub orchestrating incoming FSM UI actions."""
 
-from fastapi import FastAPI
+import time
+from typing import Annotated
+
+import duckdb
+from fastapi import Depends, FastAPI, HTTPException, status
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic_ai.messages import (
+    ModelRequest,
+    ModelResponse,
+    SystemPromptPart,
+    TextPart,
+    UserPromptPart,
+)
 
-from app.api.routes import explore as explore_router
-from app.api.routes import health as health_router
-from app.api.routes import insights as insights_router
-from app.api.routes import investigation as investigation_router
-from app.api.routes import rules as rules_router
-from app.api.schemas import QueryRequest, QueryResponse
-from app.core.config import settings
-from app.core.logger import get_logger, request_id_ctx
-from app.core.validators import SQLValidationError
-from app.db.schema_loader import load_schema
-from app.services.pipeline import run_pipeline
+from app.agent.core import AgentDependencies, fsm_agent
+from app.database import get_analytics_db
+from app.logger import get_logger
+from app.schemas import (
+    BacktestRequest,
+    BacktestResponse,
+    DataGridResponse,
+    ExecuteRequest,
+    ExploreRequest,
+    ExploreResponse,
+)
+from app.services.analytics import execute_raw_sql, run_backtest
+from app.services.session import session_store
+
+logger = get_logger("fsm_backend")
 
 
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    # Startup
-    logger.info("Application starting up")
-
-    yield
-
-    # Shutdown
-    logger.info("Application shutting down")
-
-
-app = FastAPI(lifespan=lifespan)
+# --- Core Web Application Configuration ---
+app = FastAPI(title="Fraud Success Manager Assistant API Server")
 
 app.add_middleware(
     middleware_class=CORSMiddleware,
-    allow_origins=settings.ORIGINS,
+    allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
-logger = get_logger(__name__)
 
+@app.post("/api/explore")
+async def explore_hypothesis(
+    payload: ExploreRequest,
+    db: Annotated[duckdb.DuckDBPyConnection, Depends(get_analytics_db)],
+) -> ExploreResponse:
+    """Consume natural language request, execute multi-turn agent maps, return verified SQL."""
+    logger.info(
+        "Explore request received | Session ID: %s | User Prompt: '%s'",
+        payload.session_id,
+        payload.user_prompt,
+    )
 
-@app.middleware("http")
-async def add_request_id_middleware(request, call_next):
-    """Attach a per-request UUID to the logging context and log request lifecycle."""
-    request_id = str(uuid.uuid4())
-    token = request_id_ctx.set(request_id)
-
-    logger.info("Request start: %s %s", request.method, request.url.path)
+    past_history = session_store.get_history(payload.session_id)
+    deps = AgentDependencies(db=db)
+    current_rule_state = payload.current_rule_state
 
     try:
-        response = await call_next(request)
+        start_time = time.perf_counter()
+
+        result = await fsm_agent.run(
+            user_prompt=payload.user_prompt,
+            deps=deps,
+            message_history=past_history,
+            current_rule_state=current_rule_state,
+            retries=5,
+        )
+
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        new_history = list(past_history) if past_history else []
+        new_history.extend(
+            [
+                ModelRequest(parts=[UserPromptPart(content=payload.user_prompt)]),
+                ModelResponse(
+                    parts=[
+                        TextPart(content=f"Generated SQL: {result.output.explore_sql}"),
+                    ],
+                ),
+            ]
+        )
+        session_store.save_history(payload.session_id, new_history)
 
         logger.info(
-            "Request end: %s %s %s",
-            request.method,
-            request.url.path,
-            getattr(response, "status_code", "-"),
+            "Agent structural generation successful | Session ID: %s | Latency: %.2fms | Generated SQL: %s",
+            payload.session_id,
+            duration_ms,
+            result.output.explore_sql.replace("\n", " "),
         )
 
-        return response
+        return ExploreResponse(
+            session_id=payload.session_id,
+            rationale=result.output.rationale,
+            explore_sql=result.output.explore_sql,
+            rule_predicate=result.output.rule_predicate,
+            is_exploratory_only=result.output.is_exploratory_only,
+        )
 
-    finally:
-        request_id_ctx.reset(token)
+    except Exception as e:
+        logger.error(
+            "AI Agent translation failed | Session ID: %s | Error Type: UnexpectedModelBehavior | Message: %s",
+            payload.session_id,
+            str(e),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"AI Agent translation failed: {str(e)}",
+        )
 
 
-@app.post("/query")
-def query_endpoint(request: QueryRequest) -> QueryResponse:
+@app.post("/api/execute")
+def execute_query(
+    payload: ExecuteRequest,  # Strongly typed Pydantic parameter
+    db: Annotated[duckdb.DuckDBPyConnection, Depends(get_analytics_db)],
+) -> DataGridResponse:
+    """Execute raw or manually tweaked SQL instructions directly inside the sandbox grid."""
+    sql_text = payload.sql_query
+
+    logger.info("Executing analytical query payload: %s", sql_text.replace("\n", " "))
+    start_time = time.perf_counter()
+
     try:
-        schema = load_schema()
+        results = execute_raw_sql(db, sql_text)
 
-        return run_pipeline(question=request.question, schema=schema)
+        if payload.session_id:
+            history = session_store.get_history(payload.session_id)
+            if history:
+                preview_rows = results["rows"][:10]
+                observation = (
+                    f"SYSTEM OBSERVATION: The previously generated SQL was executed. "
+                    f"Columns: {results['columns']} | Returned Rows (Preview): {preview_rows}"
+                    f"Ensure you only generate complete, executable SELECT statements or valid isolated WHERE predicates using standard table short-aliases."
+                )
 
-    except SQLValidationError as exc:
-        logger.warning("Validation failed: %s", str(exc))
+                # FIX: Ensure it is a valid structural sequence before saving
+                # If the last item in history is a ModelRequest, we can safely append to its parts
+                if history and isinstance(history[-1], ModelRequest):
+                    history[-1].parts.append(SystemPromptPart(content=observation))
+                else:
+                    history.append(
+                        ModelRequest(parts=[SystemPromptPart(content=observation)])
+                    )
 
-        return QueryResponse(
-            sql=None,
-            explanation=None,
-            confidence=None,
-            results=None,
-            error=f"SQL validation error: {str(exc)}",
-        )
+                session_store.save_history(payload.session_id, history)
 
     except Exception as exc:
-        logger.exception("Query failed: %s")
-
-        return QueryResponse(
-            sql=None,
-            explanation=None,
-            confidence=None,
-            results=None,
-            error=str(exc),
+        logger.error(
+            "Database compilation or execution failure | Target Query: %s | Error: %s",
+            sql_text.replace("\n", " "),
+            str(exc),
         )
+        # Return a clean 200 containing rows with the error message so the UI can draw it nicely inside the logs grid instead of timing out!
+        return DataGridResponse(
+            columns=["Compilation Error Details"],
+            rows=[[str(exc)]],
+            execution_time_ms=0.0,
+        )
+    else:
+        execution_ms = (time.perf_counter() - start_time) * 1000
+        logger.info("Query completed cleanly | Latency: %.2fms", execution_ms)
+
+        results["execution_time_ms"] = round(execution_ms, 2)
+        return DataGridResponse(**results)
 
 
-# Mount routers
-app.include_router(explore_router.router, prefix="/api")
-app.include_router(rules_router.router, prefix="/api")
-app.include_router(insights_router.router, prefix="/api")
-app.include_router(health_router.router, prefix="/api")
-app.include_router(investigation_router.router, prefix="/api")
+@app.post("/api/backtest")
+def evaluate_rule(
+    payload: BacktestRequest,  # Strongly typed Pydantic parameter
+    db: Annotated[duckdb.DuckDBPyConnection, Depends(get_analytics_db)],
+) -> BacktestResponse:
+    """Backtest a custom WHERE rule fragment over full historical metrics."""
+    # Access properties directly via dot notation instead of .get() dictionaries!
+    clause_text = payload.where_clause
+
+    logger.info(
+        "Initiating historical rule backtest evaluation | Fragment: %s", clause_text
+    )
+    start_time = time.perf_counter()
+
+    try:
+        metrics = run_backtest(db, clause_text)
+        duration_ms = (time.perf_counter() - start_time) * 1000
+
+        logger.info(
+            "Backtest calculation completed | Latency: %.2fms | Blocked Records: %s | Saved Value: $%0.2f",
+            duration_ms,
+            metrics["metrics"]["true_positives"]
+            + metrics["metrics"]["false_positives"],
+            metrics["metrics"]["total_fraud_value_saved_usd"],
+        )
+        return BacktestResponse(**metrics)
+    except Exception as exc:
+        logger.error(
+            "Backtester verification crash | Evaluated Fragment: %s | Error: %s",
+            clause_text,
+            str(exc),
+        )
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Backtester Compile Error: {str(exc)}",
+        ) from exc

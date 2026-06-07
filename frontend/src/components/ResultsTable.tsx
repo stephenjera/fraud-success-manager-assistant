@@ -1,56 +1,114 @@
 import React from "react";
+import type { DataGridResponse } from "../types/api";
+import { Table, Zap } from "lucide-react";
 
-type Props = {
-  data: Record<string, unknown>[] | null;
-};
+interface ResultsTableProps {
+  data: DataGridResponse | null;
+  isLoading: boolean;
+  error: Error | null;
+}
 
-export function ResultsTable({ data }: Props) {
-  if (!data || data.length === 0) {
+export const ResultsTable: React.FC<ResultsTableProps> = ({
+  data,
+  isLoading,
+  error,
+}) => {
+  if (isLoading) {
     return (
-      <div className="p-8 border border-dashed border-slate-200 rounded-xl flex flex-col items-center justify-center text-slate-400 bg-slate-50/50">
-        <svg className="w-8 h-8 mb-2 opacity-60" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-        </svg>
-        <span className="text-sm font-medium">No relational matrix data available</span>
+      <div className="flex h-64 flex-col items-center justify-center space-y-3 rounded-xl border border-slate-800 bg-slate-900">
+        <div className="h-8 w-8 animate-spin rounded-full border-4 border-emerald-500 border-t-transparent"></div>
+        <p className="font-mono text-sm text-slate-400">
+          Running compiler execution pass...
+        </p>
       </div>
     );
   }
 
-  const columns = Object.keys(data[0]);
+  if (error) {
+    return (
+      <div className="max-h-64 overflow-auto rounded-xl border border-red-800/60 bg-red-950/40 p-4 font-mono text-xs whitespace-pre-wrap text-red-400">
+        <span className="mb-1 block text-sm font-bold text-red-300">
+          Sandbox Compile Error:
+        </span>
+        {error.message}
+      </div>
+    );
+  }
+
+  if (!data) {
+    return (
+      <div className="flex h-64 flex-col items-center justify-center rounded-xl border border-dashed border-slate-800 bg-slate-900/40 text-slate-500">
+        <Table className="mb-2 h-8 w-8 stroke-[1.5]" />
+        <p className="text-sm">No data in workspace matrix</p>
+        <p className="mt-1 text-xs text-slate-600">
+          Execute an engine query to render records
+        </p>
+      </div>
+    );
+  }
 
   return (
-    <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm bg-white">
-      <div className="px-4 py-3 border-b border-slate-100 bg-slate-50/50 flex items-center gap-2">
-        <svg className="w-4 h-4 text-slate-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-          <path strokeLinecap="round" strokeLinejoin="round" d="M4 7v10c0 2.21 3.582 4 8 4s8-1.79 8-4V7M4 7c0 2.21 3.582 4 8 4s8-1.79 8-4M4 7c0-2.21 3.582-4 8-4s8 1.79 8 4m0 5c0 2.21-3.582 4-8 4s-8-1.79-8-4" />
-        </svg>
-        <h5 className="font-semibold text-slate-700 text-sm">Query Result Data Set ({data.length} rows)</h5>
+    <div className="flex h-full flex-col overflow-hidden rounded-xl border border-slate-800 bg-slate-900">
+      {/* Telemetry Header Strip */}
+      <div className="flex items-center justify-between border-b border-slate-800 bg-slate-950/60 px-4 py-2.5">
+        <div className="flex items-center space-x-2 font-mono text-xs text-slate-400">
+          <Zap className="h-3.5 w-3.5 fill-amber-400/20 text-amber-400" />
+          <span>Execution Matrix Accepted</span>
+        </div>
+        <span className="rounded-md border border-emerald-900/60 bg-emerald-950/60 px-2 py-0.5 font-mono text-xs text-emerald-400">
+          Telemetry: {data.execution_time_ms.toFixed(1)}ms
+        </span>
       </div>
-      <div className="overflow-x-auto max-h-[320px]">
-        <table className="w-full text-left border-collapse text-xs">
-          <thead>
-            <tr className="bg-slate-100/70 border-b border-slate-200 text-slate-600 uppercase font-semibold tracking-wider sticky top-0 bg-slate-50">
-              {columns.map((col) => (
-                <th key={col} className="px-4 py-2.5 font-medium">{col}</th>
+
+      {/* Main Grid View */}
+      <div className="flex-1 overflow-auto">
+        <table className="w-full border-collapse text-left font-mono text-xs">
+          <thead className="sticky top-0 z-10 border-b border-slate-800 bg-slate-950 shadow-sm">
+            <tr>
+              {data.columns.map((col) => (
+                <th
+                  key={col}
+                  className="px-4 py-3 text-[10px] font-semibold tracking-wider text-slate-300 uppercase"
+                >
+                  {col}
+                </th>
               ))}
             </tr>
           </thead>
-          <tbody className="divide-y divide-slate-100 text-slate-700 font-mono">
-            {data.map((row, i) => (
-              <tr key={i} className="hover:bg-slate-50/80 transition-colors">
-                {columns.map((col) => {
-                  const val = row[col];
-                  return (
-                    <td key={col} className="px-4 py-2.5 truncate max-w-[220px]">
-                      {typeof val === "object" && val !== null ? JSON.stringify(val) : String(val ?? "")}
-                    </td>
-                  );
-                })}
+          <tbody className="divide-y divide-slate-800/60">
+            {data.rows.length === 0 ? (
+              <tr>
+                <td
+                  colSpan={data.columns.length}
+                  className="px-4 py-8 text-center text-slate-500 italic"
+                >
+                  Query returned an empty dataset
+                </td>
               </tr>
-            ))}
+            ) : (
+              data.rows.map((row, rIdx) => (
+                <tr
+                  key={rIdx}
+                  className="transition-colors duration-150 hover:bg-slate-800/30"
+                >
+                  {row.map((val, cIdx) => (
+                    <td
+                      key={cIdx}
+                      className="max-w-xs truncate px-4 py-2.5 text-slate-400"
+                    >
+                      {val === null ? (
+                        <span className="text-slate-600 italic">NULL</span>
+                      ) : (
+                        String(val)
+                      )}
+                    </td>
+                  ))}
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
     </div>
   );
-}
+};

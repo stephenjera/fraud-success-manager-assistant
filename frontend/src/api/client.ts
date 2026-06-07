@@ -1,29 +1,34 @@
+// src/api/client.ts
 import axios from "axios";
-import type { QueryResponse } from "../types/api";
+import type {
+  ExploreRequest,
+  ExploreResponse,
+  ExecuteRequest,
+  DataGridResponse,
+  BacktestRequest,
+  BacktestResponse,
+} from "../types/api";
 
-const BASE_URL = "http://localhost:8000";
+const api = axios.create({
+  baseURL: "/api", 
+  headers: {
+    "Content-Type": "application/json",
+  },
+});
 
-export async function runQuery(question: string): Promise<QueryResponse> {
-  // Axios handles the JSON stringifying and parsing automatically
-  // It also automatically throws an error if the status is not 2xx
-  const { data } = await axios.post<QueryResponse>(`${BASE_URL}/query`, {
-    question,
-  });
-  return data;
-}
+export const apiService = {
+  async exploreHypothesis(payload: ExploreRequest): Promise<ExploreResponse> {
+    const response = await api.post<ExploreResponse>("/explore", payload);
+    return response.data;
+  },
 
-export async function runInvestigation(
-  session_id: string,
-  question: string,
-  mode: "new" | "refine" = "new"
-): Promise<any> {
-  const { data } = await axios.post<any>(`${BASE_URL}/api/investigation/run`, null, {
-    params: { session_id, question, mode },
-  });
-  return data;
-}
+  async executeSQL(payload: ExecuteRequest): Promise<DataGridResponse> {
+    const response = await api.post<DataGridResponse>("/execute", payload);
+    return response.data;
+  },
 
-export async function getInvestigation(session_id: string): Promise<any> {
-  const { data } = await axios.get<any>(`${BASE_URL}/api/investigation/${encodeURIComponent(session_id)}`);
-  return data;
-}
+  async runBacktest(payload: BacktestRequest): Promise<BacktestResponse> {
+    const response = await api.post<BacktestResponse>("/backtest", payload);
+    return response.data;
+  },
+};
