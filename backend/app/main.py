@@ -48,73 +48,90 @@ async def explore_hypothesis(
     payload: ExploreRequest,
     db: Annotated[duckdb.DuckDBPyConnection, Depends(get_analytics_db)],
 ) -> ExploreResponse:
-    """Consume natural language request, execute multi-turn agent maps, return verified SQL."""
+    """
+    Core FSM loop:
+    - Accept natural language hypothesis
+    - Run single-agent co-pilot
+    - Persist structured memory for iterative reasoning
+    """
+
     logger.info(
-        "Explore request received | Session ID: %s | User Prompt: '%s'",
+        "Explore request | session=%s | prompt=%s",
         payload.session_id,
         payload.user_prompt,
     )
 
     past_history = session_store.get_history(payload.session_id)
     deps = AgentDependencies(db=db)
-    current_rule_state = payload.current_rule_state
+
+    start_time = time.perf_counter()
 
     try:
-        start_time = time.perf_counter()
-
         result = await fsm_agent.run(
             user_prompt=payload.user_prompt,
             deps=deps,
             message_history=past_history,
-            current_rule_state=current_rule_state,
+            current_rule_state=payload.current_rule_state,
             retries=5,
         )
 
         duration_ms = (time.perf_counter() - start_time) * 1000
 
+        sql = result.output.explore_sql
+        predicate = result.output.rule_predicate
+
+        # Initialize new history with past items
         new_history = list(past_history) if past_history else []
-        new_history.extend(
-            [
-                ModelRequest(parts=[UserPromptPart(content=payload.user_prompt)]),
-                ModelResponse(
-                    parts=[
-                        TextPart(content=f"Generated SQL: {result.output.explore_sql}"),
-                    ],
-                ),
-            ]
-        )
+
+        # 1. Append the automatic messages generated during this run (User request + Tool Calls + Structured Responses)
+        new_history.extend(result.new_messages())
+
+        # 2. Append the System Observation so the model can contextualize the results in the next turn
+        observation = f"""
+            SYSTEM OBSERVATION:
+
+            Executed SQL:
+            {sql}
+
+            Returned rows: available in data grid
+
+            Rule predicate:
+            {predicate}
+
+            NOTE:
+            This observation represents real execution feedback.
+            Use it for follow-up hypothesis refinement.
+            """.strip()
+
+        new_history.append(ModelResponse(parts=[TextPart(content=observation)]))
+
         session_store.save_history(payload.session_id, new_history)
 
         logger.info(
-            "Agent structural generation successful | Session ID: %s | Latency: %.2fms | Generated SQL: %s",
+            "Explore complete | session=%s | latency=%.2fms",
             payload.session_id,
             duration_ms,
-            result.output.explore_sql.replace("\n", " "),
         )
 
         return ExploreResponse(
             session_id=payload.session_id,
             rationale=result.output.rationale,
-            explore_sql=result.output.explore_sql,
-            rule_predicate=result.output.rule_predicate,
+            explore_sql=sql,
+            rule_predicate=predicate,
             is_exploratory_only=result.output.is_exploratory_only,
         )
 
     except Exception as e:
-        logger.error(
-            "AI Agent translation failed | Session ID: %s | Error Type: UnexpectedModelBehavior | Message: %s",
-            payload.session_id,
-            str(e),
-        )
+        logger.exception("Explore failed")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"AI Agent translation failed: {str(e)}",
+            status_code=500,
+            detail=str(e),
         )
 
 
 @app.post("/api/execute")
 def execute_query(
-    payload: ExecuteRequest,  # Strongly typed Pydantic parameter
+    payload: ExecuteRequest,
     db: Annotated[duckdb.DuckDBPyConnection, Depends(get_analytics_db)],
 ) -> DataGridResponse:
     """Execute raw or manually tweaked SQL instructions directly inside the sandbox grid."""
@@ -132,19 +149,15 @@ def execute_query(
                 preview_rows = results["rows"][:10]
                 observation = (
                     f"SYSTEM OBSERVATION: The previously generated SQL was executed. "
-                    f"Columns: {results['columns']} | Returned Rows (Preview): {preview_rows}"
+                    f"Columns: {results['columns']} | Returned Rows (Preview): {preview_rows} "
                     f"Ensure you only generate complete, executable SELECT statements or valid isolated WHERE predicates using standard table short-aliases."
                 )
 
-                # FIX: Ensure it is a valid structural sequence before saving
-                # If the last item in history is a ModelRequest, we can safely append to its parts
+                # Ensure structural safety before saving to backend history
                 if history and isinstance(history[-1], ModelRequest):
                     history[-1].parts.append(SystemPromptPart(content=observation))
                 else:
-                    history.append(
-                        ModelRequest(parts=[SystemPromptPart(content=observation)])
-                    )
-
+                    history.append(ModelResponse(parts=[TextPart(content=observation)]))
                 session_store.save_history(payload.session_id, history)
 
     except Exception as exc:
@@ -169,11 +182,10 @@ def execute_query(
 
 @app.post("/api/backtest")
 def evaluate_rule(
-    payload: BacktestRequest,  # Strongly typed Pydantic parameter
+    payload: BacktestRequest, 
     db: Annotated[duckdb.DuckDBPyConnection, Depends(get_analytics_db)],
 ) -> BacktestResponse:
     """Backtest a custom WHERE rule fragment over full historical metrics."""
-    # Access properties directly via dot notation instead of .get() dictionaries!
     clause_text = payload.where_clause
 
     logger.info(

@@ -27,6 +27,7 @@ select = [
 ignore = [
     "D203", # One-blank-line-before-class (conflicts with D211)
     "D213", # Multi-line docstring summary on first line (Google style uses second line)
+    "D212", # Multi-line docstring summary should start at the first line
     "S608"  # SQL injection risk when using f-strings
 ]
 

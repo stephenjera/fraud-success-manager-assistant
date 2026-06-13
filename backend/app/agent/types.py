@@ -5,6 +5,5 @@ import duckdb
 
 @dataclass
 class AgentDependencies:
-    """Type-safe dependency bucket containing thread-safe execution engines."""
-
     db: duckdb.DuckDBPyConnection
+    current_rule_state: str | None = None
