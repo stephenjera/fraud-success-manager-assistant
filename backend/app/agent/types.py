@@ -7,3 +7,4 @@ import duckdb
 class AgentDependencies:
     db: duckdb.DuckDBPyConnection
     current_rule_state: str | None = None
+    execution_context: dict | None = None

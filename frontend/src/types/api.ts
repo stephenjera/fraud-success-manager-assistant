@@ -1,56 +1,70 @@
-export interface ChatMessage {
-  id: string;
-  sender: "user" | "agent";
-  text: string;
-  rationale?: string;
-  explore_sql?: string;
-  rule_predicate?: string;
-  timestamp: Date;
-}
+// =========================================================
+// EXPLORATION LAYER TYPES
+// =========================================================
 
 export interface ExploreRequest {
   session_id: string;
-  user_prompt: string;
-  current_rule_state?: string | null;
+  prompt: string;
+  current_rule_state: string | null;
+  execution_context: Record<string, any> | null;
 }
 
 export interface ExploreResponse {
   session_id: string;
   rationale: string;
-  explore_sql: string;
+  sql: string;
   rule_predicate: string | null;
   is_exploratory_only: boolean;
 }
 
+// =========================================================
+// RULE EVALUATION TYPES
+// =========================================================
+
+export interface RuleMetrics {
+  true_positives: number;
+  false_positives: number;
+  false_negatives: number;
+  true_negatives: number;
+  precision: number;
+  recall: number;
+  false_positive_rate: number;
+  fraud_value_caught: number;
+  legit_value_blocked: number;
+  net_value: number;
+}
+
+export interface RuleEvaluationRequest {
+  where_clause: string;
+}
+
+export interface RuleEvaluationResponse {
+  metrics: RuleMetrics;
+}
+
+// =========================================================
+// RAW EXECUTION LAYER TYPES
+// =========================================================
+
 export interface ExecuteRequest {
-  session_id?: string;
-  sql_query: string;
+  session_id: string | null;
+  sql: string;
 }
 
 export interface DataGridResponse {
   columns: string[];
-  rows: any[][];
+  rows: any[][]; // Positional array layout matching backend optimization
   execution_time_ms: number;
 }
 
-export interface BacktestRequest {
-  where_clause: string;
-}
+// =========================================================
+// APPLICATION COMPONENT STATE INTERFACES
+// =========================================================
 
-export interface BacktestMetrics {
-  true_positives: number;
-  false_positives: number;
-  false_positive_ratio: number;
-  total_fraud_value_saved_usd: number;
-}
-
-export interface TimelineDataPoint {
-  date: string;
-  fraud_blocked: number;
-  legitimate_blocked: number;
-}
-
-export interface BacktestResponse {
-  metrics: BacktestMetrics;
-  timeline_series: TimelineDataPoint[];
+export interface Message {
+  id: string;
+  sender: 'user' | 'agent';
+  text: string;
+  payload?: ExploreResponse;
+  timestamp: string;
 }

@@ -1,34 +1,39 @@
-// src/api/client.ts
 import axios from "axios";
-import type {
+import type{
   ExploreRequest,
   ExploreResponse,
   ExecuteRequest,
   DataGridResponse,
-  BacktestRequest,
-  BacktestResponse,
+  RuleEvaluationRequest,
+  RuleEvaluationResponse,
 } from "../types/api";
 
-const api = axios.create({
-  baseURL: "/api", 
-  headers: {
-    "Content-Type": "application/json",
-  },
-});
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
-export const apiService = {
-  async exploreHypothesis(payload: ExploreRequest): Promise<ExploreResponse> {
-    const response = await api.post<ExploreResponse>("/explore", payload);
-    return response.data;
+export const api = {
+  explore: async (data: ExploreRequest): Promise<ExploreResponse> => {
+    const res = await axios.post<ExploreResponse>(
+      `${API_URL}/api/explore`,
+      data,
+    );
+    return res.data;
   },
 
-  async executeSQL(payload: ExecuteRequest): Promise<DataGridResponse> {
-    const response = await api.post<DataGridResponse>("/execute", payload);
-    return response.data;
+  execute: async (data: ExecuteRequest): Promise<DataGridResponse> => {
+    const res = await axios.post<DataGridResponse>(
+      `${API_URL}/api/execute`,
+      data,
+    );
+    return res.data;
   },
 
-  async runBacktest(payload: BacktestRequest): Promise<BacktestResponse> {
-    const response = await api.post<BacktestResponse>("/backtest", payload);
-    return response.data;
+  evaluateRule: async (
+    data: RuleEvaluationRequest,
+  ): Promise<RuleEvaluationResponse> => {
+    const res = await axios.post<RuleEvaluationResponse>(
+      `${API_URL}/api/rules/evaluate`,
+      data,
+    );
+    return res.data;
   },
 };
