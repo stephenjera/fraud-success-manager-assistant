@@ -1,17 +1,24 @@
 import React, { useState, useRef, useEffect } from "react";
-import type { Message } from "../types/api";
+import type { Message, SessionItem } from "../types/api";
 
 interface ChatStreamProps {
   sessionId: string;
   messages: Message[];
   isLoading: boolean;
   onSendPrompt: (prompt: string) => void;
+  sessions: SessionItem[];
+  onSelectSession: (sessionId: string) => void;
+  onNewSession: () => void;
 }
 
 export const ChatStream: React.FC<ChatStreamProps> = ({
+  sessionId,
   messages,
   isLoading,
   onSendPrompt,
+  sessions,
+  onSelectSession,
+  onNewSession,
 }) => {
   const [input, setInput] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -27,15 +34,52 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
     setInput("");
   };
 
+  const formatSessionTime = (iso: string) => {
+    try {
+      return new Date(iso).toLocaleTimeString();
+    } catch {
+      return iso.substring(11, 16);
+    }
+  };
+
   return (
     <div className="flex h-full flex-col border-r border-slate-800 bg-slate-900">
       <div className="border-b border-slate-800 bg-slate-900/50 px-6 py-4 backdrop-blur">
-        <h2 className="font-mono text-xs font-bold tracking-wider text-slate-400 uppercase">
-          AI Copilot Agent
-        </h2>
-        <p className="mt-0.5 text-[11px] text-slate-500">
-          Automated Rule Extraction System
-        </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="font-mono text-xs font-bold tracking-wider text-slate-400 uppercase">
+              AI Copilot Agent
+            </h2>
+            <p className="mt-0.5 text-[11px] text-slate-500">
+              Automated Rule Extraction System
+            </p>
+          </div>
+          <button
+            onClick={onNewSession}
+            className="rounded-md bg-slate-800 px-2.5 py-1 font-mono text-[10px] text-slate-300 transition hover:bg-slate-700"
+          >
+            + New Session
+          </button>
+        </div>
+
+        {sessions.length > 0 && (
+          <div className="mt-3">
+            <select
+              value={sessionId}
+              onChange={(e) => onSelectSession(e.target.value)}
+              className="w-full rounded-md border border-slate-700 bg-slate-950 px-3 py-1.5 font-mono text-[10px] text-slate-300 focus:border-slate-600 focus:outline-none"
+            >
+              {sessions
+                .filter((s) => s.id.startsWith("sess_"))
+                .sort((a, b) => b.updated_at.localeCompare(a.updated_at))
+                .map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.id} · {formatSessionTime(s.updated_at)}
+                  </option>
+                ))}
+            </select>
+          </div>
+        )}
       </div>
 
       {/* Messages Stream */}
@@ -58,6 +102,13 @@ export const ChatStream: React.FC<ChatStreamProps> = ({
             >
               <p className="whitespace-pre-wrap">{msg.text}</p>
             </div>
+
+            {msg.confidence !== undefined && (
+              <div className="mt-1.5 px-1 font-mono text-[10px] text-slate-500 italic">
+                Confidence: {(msg.confidence * 100).toFixed(0)}%
+                {msg.confidence < 0.5 && " — low confidence, review carefully"}
+              </div>
+            )}
 
             {msg.payload && (
               <div className="mt-1.5 px-1 font-mono text-[10px] text-slate-500 italic">

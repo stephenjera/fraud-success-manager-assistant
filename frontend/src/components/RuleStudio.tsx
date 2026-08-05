@@ -107,6 +107,21 @@ export const RuleStudio: React.FC<RuleStudioProps> = ({
               </div>
             </div>
 
+            {/* Statistical Significance */}
+            <div className={`rounded-xl border p-3 ${metrics.statistically_significant ? 'border-emerald-800 bg-emerald-900/10' : 'border-rose-800 bg-rose-900/10'}`}>
+              <span className="block font-mono text-[10px] font-bold tracking-wider text-slate-400 uppercase">
+                Statistical Significance
+              </span>
+              <div className="mt-1 flex items-center justify-between">
+                <span className={`font-mono text-xs font-bold ${metrics.statistically_significant ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {metrics.statistically_significant ? 'SIG — Signal is reliable' : 'NOT SIG — May be noise'}
+                </span>
+                <span className="font-mono text-[10px] text-slate-500">
+                  p={metrics.p_value < 0.001 ? '<0.001' : metrics.p_value.toFixed(4)} | OR={metrics.odds_ratio.toFixed(2)}
+                </span>
+              </div>
+            </div>
+
             {/* Financial Ledger Impact Rows */}
             <div className="space-y-3 rounded-xl border border-slate-800 bg-slate-900 p-4">
               <span className="block font-mono text-[10px] font-bold tracking-wider text-slate-400 uppercase">

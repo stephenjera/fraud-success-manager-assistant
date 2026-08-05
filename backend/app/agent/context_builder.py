@@ -4,7 +4,6 @@ def build_execution_context(grid_response: dict) -> dict:
     """
 
     rows = grid_response.get("rows", [])
-    columns = grid_response.get("columns", [])
 
     if not rows:
         return {

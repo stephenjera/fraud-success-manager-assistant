@@ -1,15 +1,16 @@
 """
-In-memory session + execution state tracking (MVP version).
+Session + execution state tracking.
 
-We separate:
-1. Chat history (LLM-facing memory)
-2. Execution logs (system telemetry, NOT LLM input)
+Thin wrapper around session_store.py (SQLite-backed persistence) that
+preserves the original in-memory interface so callers need not change.
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any
+
+from app.api.services import session_store as _store
 
 if TYPE_CHECKING:
     from pydantic_ai.messages import ModelMessage
@@ -19,27 +20,14 @@ class SessionManager:
     """
     Stores conversational history used by the LLM.
 
-    ONLY contains:
-    - user messages
-    - assistant messages
-    - tool messages (if applicable)
-
-    NEVER contains:
-    - SQL execution results
-    - metrics
-    - system telemetry
+    All calls are proxied to the SQLite-backed session_store.
     """
 
-    def __init__(self) -> None:
-        self._sessions: dict[str, list[ModelMessage]] = {}
-
     def get_history(self, session_id: str) -> list[ModelMessage]:
-        if session_id not in self._sessions:
-            self._sessions[session_id] = []
-        return self._sessions[session_id]
+        return _store.get_chat_history(session_id)
 
     def save_history(self, session_id: str, history: list[ModelMessage]) -> None:
-        self._sessions[session_id] = history
+        _store.save_chat_messages(session_id, history)
 
 
 session_store = SessionManager()
@@ -56,35 +44,21 @@ class ExecutionEvent:
 
 class ExecutionStore:
     """
-    Stores raw system execution traces.
-
-    This is:
-    - NOT passed to LLM
-    - used for debugging, replay, analytics, evaluation
+    Stores raw system execution traces (proxied to SQLite).
     """
 
-    def __init__(self) -> None:
-        self._logs: dict[str, list[ExecutionEvent]] = {}
-
     def append(self, session_id: str, event: ExecutionEvent) -> None:
-        if session_id not in self._logs:
-            self._logs[session_id] = []
-        self._logs[session_id].append(event)
+        _store.append_execution_event(session_id, event)
 
     def get(self, session_id: str) -> list[ExecutionEvent]:
-        return self._logs.get(session_id, [])
+        return _store.get_execution_events(session_id)
 
 
 execution_store = ExecutionStore()
 
 
 class SessionFacade:
-    """
-    Optional abstraction layer for future:
-    - replay tools
-    - debugging UI
-    - FSM visualization
-    """
+    """Abstraction layer for replay tools, debugging UI, FSM visualisation."""
 
     def __init__(self, chat: SessionManager, exec_store: ExecutionStore) -> None:
         self.chat = chat

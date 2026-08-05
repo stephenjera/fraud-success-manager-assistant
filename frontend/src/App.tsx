@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { ChatStream } from "./components/ChatStream";
 import { DataGrid } from "./components/DataGrid";
 import { RuleStudio } from "./components/RuleStudio";
+import { ApprovalBanner } from "./components/ApprovalBanner";
 import type {
   Message,
   DataGridResponse,
@@ -11,19 +12,71 @@ import type {
   ExecuteRequest,
   RuleEvaluationRequest,
   RuleEvaluationResponse,
+  SessionItem,
+  SessionHistoryResponse,
 } from "./types/api";
 
 type TabId = "grid" | "rule_lab";
 
 const API_BASE = "http://localhost:8000/api";
 
+const generateSessionId = () =>
+  `sess_${Math.random().toString(36).substring(2, 11)}`;
+
 export default function App() {
-  const [sessionId] = useState<string>(
-    () => `sess_${Math.random().toString(36).substring(2, 11)}`,
-  );
+  const [sessionId, setSessionId] = useState<string>(generateSessionId);
   const [activeTab, setActiveTab] = useState<TabId>("grid");
 
-  // Conversational state
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+
+  const fetchSessions = useCallback(async () => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions`);
+      const data = await res.json();
+      setSessions(data.sessions || []);
+    } catch {
+      // Non-critical — session list will just be empty
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchSessions();
+  }, [fetchSessions]);
+
+  const loadSession = async (targetId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/sessions/${targetId}/history`);
+      if (!res.ok) return;
+      const data: SessionHistoryResponse = await res.json();
+      setSessionId(targetId);
+
+      const restored: Message[] = data.history.map((item, i) => ({
+        id: `loaded_${i}_${Math.random().toString(36).substring(2, 6)}`,
+        sender: item.role === "user" ? "user" : "agent",
+        text: item.content,
+        timestamp: new Date().toLocaleTimeString(),
+      }));
+
+      setMessages(
+        restored.length
+          ? restored
+          : [
+              {
+                id: "init",
+                sender: "agent",
+                text: "System online. Describe the fraud patterns or anomalies you want to investigate.",
+                timestamp: new Date().toLocaleTimeString(),
+              },
+            ],
+      );
+      setPendingApproval(false);
+      setPendingSql("");
+      setPendingPredicate("");
+    } catch {
+      console.error("Failed to load session:", targetId);
+    }
+  };
+
   const [messages, setMessages] = useState<Message[]>([
     {
       id: "init",
@@ -33,11 +86,16 @@ export default function App() {
     },
   ]);
 
-  // Synchronized code states
+  // B-4: Synchronized code states — generated artifacts sit here pending approval
   const [sqlQuery, setSqlQuery] = useState<string>(
     "SELECT * FROM transactions LIMIT 100;",
   );
   const [predicateQuery, setPredicateQuery] = useState<string>("");
+
+  // B-4: Pending flag — true when LLM has generated SQL awaiting user approval
+  const [pendingApproval, setPendingApproval] = useState<boolean>(false);
+  const [pendingSql, setPendingSql] = useState<string>("");
+  const [pendingPredicate, setPendingPredicate] = useState<string>("");
 
   // Data caches
   const [gridData, setGridData] = useState<DataGridResponse | null>(null);
@@ -74,13 +132,31 @@ export default function App() {
 
       const data: ExploreResponse = await res.json();
 
-      // AUTO-INGESTION: Immediately seed the editing panels with the generated artifacts
+      // A-6: Handle clarification — if LLM needs clarification, show the question
+      if (data.needs_clarification) {
+        const agentMsg: Message = {
+          id: Math.random().toString(),
+          sender: "agent",
+          text: data.clarification_request || data.rationale,
+          confidence: data.confidence_score,
+          timestamp: new Date().toLocaleTimeString(),
+        };
+        setMessages((prev) => [...prev, agentMsg]);
+        // Do NOT seed panels or execute — waiting for user clarification
+        return;
+      }
+
+      // B-4: Auto-seed panels with generated artifacts as PENDING
       setSqlQuery(data.sql);
+      setPendingSql(data.sql);
+      setPendingPredicate(data.rule_predicate || "");
+      setPendingApproval(true);
+
       if (data.rule_predicate) {
         setPredicateQuery(data.rule_predicate);
-        setActiveTab("rule_lab"); // Auto-focus the rule lab if a predicate dropped
+        setActiveTab("rule_lab");
       } else {
-        setActiveTab("grid"); // Auto-focus data grid for exploratory queries
+        setActiveTab("grid");
       }
 
       const agentMsg: Message = {
@@ -88,20 +164,64 @@ export default function App() {
         sender: "agent",
         text: data.rationale,
         payload: data,
+        confidence: data.confidence_score,
         timestamp: new Date().toLocaleTimeString(),
       };
       setMessages((prev) => [...prev, agentMsg]);
 
-      // Fire off the background queries automatically to bring data alive
-      if (data.rule_predicate) {
-        evaluateRuleMetrics(data.rule_predicate);
-      }
-      executeGridQuery(data.sql);
+      // Refresh session list after successful explore
+      fetchSessions();
     } catch (err) {
       console.error("Failed to parse agent exploration stream:", err);
     } finally {
       setChatLoading(false);
     }
+  };
+
+  const handleNewSession = () => {
+    const newId = generateSessionId();
+    setSessionId(newId);
+    setMessages([
+      {
+        id: "init",
+        sender: "agent",
+        text: "System online. Describe the fraud patterns or anomalies you want to investigate.",
+        timestamp: new Date().toLocaleTimeString(),
+      },
+    ]);
+    setPendingApproval(false);
+    setPendingSql("");
+    setPendingPredicate("");
+    setSqlQuery("SELECT * FROM transactions LIMIT 100;");
+    setPredicateQuery("");
+    setGridData(null);
+    setRuleMetrics(null);
+    fetchSessions();
+  };
+
+  const handleSelectSession = async (targetId: string) => {
+    if (targetId === sessionId) return;
+    await loadSession(targetId);
+    fetchSessions();
+  };
+
+  // B-4: User explicitly approves pending SQL — executes + evaluates
+  const handleApproveAndRun = () => {
+    if (pendingSql) {
+      executeGridQuery(pendingSql);
+    }
+    if (pendingPredicate) {
+      evaluateRuleMetrics(pendingPredicate);
+      setPredicateQuery(pendingPredicate);
+    }
+    setPendingApproval(false);
+  };
+
+  // B-4: User discards pending — keeps current state, clears pending
+  const handleDiscardPending = () => {
+    setPendingSql("");
+    setPendingPredicate("");
+    setPendingApproval(false);
   };
 
   const executeGridQuery = async (queryToRun: string) => {
@@ -152,11 +272,22 @@ export default function App() {
           messages={messages}
           isLoading={chatLoading}
           onSendPrompt={handleSendPrompt}
+          sessions={sessions}
+          onSelectSession={handleSelectSession}
+          onNewSession={handleNewSession}
         />
       </div>
 
       {/* Right Product Workspace */}
       <div className="flex h-full flex-1 flex-col">
+        {/* B-4: Approval Banner */}
+        {pendingApproval && (
+          <ApprovalBanner
+            onApprove={handleApproveAndRun}
+            onDiscard={handleDiscardPending}
+          />
+        )}
+
         {/* Workspace Navigation Bar */}
         <div className="flex h-14 items-center justify-between border-b border-slate-800 bg-slate-900 px-6">
           <div className="flex space-x-2">

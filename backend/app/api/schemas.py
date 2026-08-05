@@ -49,6 +49,25 @@ class SQLResponse(BaseModel):
         examples=[True, False],
     )
 
+    confidence_score: float = Field(
+        ge=0.0,
+        le=1.0,
+        description="Self-assessed confidence (0.0-1.0) in the correctness of the generated SQL and rule predicate.",
+        examples=[0.95],
+    )
+
+    needs_clarification: bool = Field(
+        default=False,
+        description="True when the user's request is ambiguous and requires clarification before generating SQL.",
+        examples=[False],
+    )
+
+    clarification_request: str | None = Field(
+        default=None,
+        description="When needs_clarification is True, the specific question(s) to ask the user.",
+        examples=["Did you mean fraud by payment method or by geographic region?"],
+    )
+
 
 class ExploreRequest(BaseModel):
     """User prompt sent to the LLM exploration system."""
@@ -87,6 +106,11 @@ class ExploreResponse(BaseModel):
 
     is_exploratory_only: bool
 
+    confidence_score: float = 1.0
+
+    needs_clarification: bool = False
+    clarification_request: str | None = None
+
 
 # =========================================================
 #  RULE EVALUATION
@@ -122,6 +146,22 @@ class RuleMetrics(BaseModel):
     fraud_value_caught: float
     legit_value_blocked: float
     net_value: float
+
+    p_value: float = Field(
+        description="P-value from Fisher's exact test. Low values indicate the rule's association with fraud is statistically significant.",
+        examples=[0.001],
+    )
+
+    statistically_significant: bool = Field(
+        default=True,
+        description="Whether the rule passes Fisher's exact test at alpha=0.05. False suggests the signal may be noise.",
+        examples=[True],
+    )
+
+    odds_ratio: float = Field(
+        description="Odds ratio from Fisher's test. Values >1 indicate the rule catches more fraud than legitimate transactions.",
+        examples=[12.5],
+    )
 
 
 class RuleEvaluationResponse(BaseModel):
@@ -185,13 +225,48 @@ class RuleSaveResponse(BaseModel):
 
 
 # =========================================================
-# SESSION MEMORY
+# SESSION MANAGEMENT
 # =========================================================
 
 
+class SessionItem(BaseModel):
+    """Single session entry for listing."""
+
+    id: str
+    created_at: str
+    updated_at: str
+
+
+class SessionListResponse(BaseModel):
+    """Response from GET /api/sessions."""
+
+    sessions: list[SessionItem]
+
+
+class SessionHistoryItem(BaseModel):
+    """Simplified chat message for frontend rendering."""
+
+    role: str
+    content: str
+
+
 class SessionHistoryResponse(BaseModel):
+    """Response from GET /api/sessions/{id}/history."""
+
     session_id: str
-    history: list[dict]
+    history: list[SessionHistoryItem]
+
+
+class SessionDeleteResponse(BaseModel):
+    """Response from DELETE /api/sessions/{id}."""
+
+    deleted: bool
+
+
+class SessionCreateResponse(BaseModel):
+    """Response from POST /api/sessions."""
+
+    session_id: str
 
 
 # =========================================================

@@ -15,11 +15,10 @@ export interface ExploreResponse {
   sql: string;
   rule_predicate: string | null;
   is_exploratory_only: boolean;
+  confidence_score: number;
+  needs_clarification: boolean;
+  clarification_request: string | null;
 }
-
-// =========================================================
-// RULE EVALUATION TYPES
-// =========================================================
 
 export interface RuleMetrics {
   true_positives: number;
@@ -32,7 +31,14 @@ export interface RuleMetrics {
   fraud_value_caught: number;
   legit_value_blocked: number;
   net_value: number;
+  p_value: number;
+  statistically_significant: boolean;
+  odds_ratio: number;
 }
+
+// =========================================================
+// RULE EVALUATION TYPES
+// =========================================================
 
 export interface RuleEvaluationRequest {
   where_clause: string;
@@ -58,6 +64,30 @@ export interface DataGridResponse {
 }
 
 // =========================================================
+// SESSION MANAGEMENT TYPES
+// =========================================================
+
+export interface SessionItem {
+  id: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SessionListResponse {
+  sessions: SessionItem[];
+}
+
+export interface SessionHistoryItem {
+  role: string;
+  content: string;
+}
+
+export interface SessionHistoryResponse {
+  session_id: string;
+  history: SessionHistoryItem[];
+}
+
+// =========================================================
 // APPLICATION COMPONENT STATE INTERFACES
 // =========================================================
 
@@ -66,5 +96,6 @@ export interface Message {
   sender: 'user' | 'agent';
   text: string;
   payload?: ExploreResponse;
+  confidence?: number;
   timestamp: string;
 }

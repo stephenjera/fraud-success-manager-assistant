@@ -3,12 +3,14 @@ from typing import Annotated
 
 import duckdb
 from fastapi import APIRouter, Depends, HTTPException
+from scipy.stats import fisher_exact
 
 from app.api.schemas import (
     RuleEvaluationRequest,
     RuleEvaluationResponse,
     RuleMetrics,
 )
+from app.config import settings
 from app.database import get_analytics_db
 from app.logger import get_logger
 
@@ -66,8 +68,13 @@ def evaluate_rule(
         recall = tp / (tp + fn) if (tp + fn) else 0.0
         fpr = fp / (fp + tn) if (fp + tn) else 0.0
 
-        fraud_value = 500
-        fp_cost = 50
+        fraud_value = settings.FRAUD_COST
+        fp_cost = settings.FP_COST
+
+        # B-5: Fisher's exact test on 2x2 contingency matrix
+        # [[TP, FP], [FN, TN]] — tests whether flagged=1 is associated with is_fraud=1
+        p_value, odds_ratio = fisher_exact([[tp, fp], [fn, tn]])
+        statistically_significant = p_value < 0.05
 
         return RuleEvaluationResponse(
             metrics=RuleMetrics(
@@ -81,6 +88,9 @@ def evaluate_rule(
                 fraud_value_caught=tp * fraud_value,
                 legit_value_blocked=fp * fp_cost,
                 net_value=(tp * fraud_value) - (fp * fp_cost),
+                p_value=round(float(p_value), 8),
+                statistically_significant=statistically_significant,
+                odds_ratio=round(float(odds_ratio), 4),
             )
         )
 

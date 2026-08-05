@@ -9,6 +9,7 @@ Now upgraded with:
 
 from collections.abc import Sequence
 from pathlib import Path
+
 from pydantic_ai.messages import ModelMessage
 
 PROMPT_VERSION = "v4.0"
