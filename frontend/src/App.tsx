@@ -263,6 +263,26 @@ export default function App() {
     }
   };
 
+  const latestConfidence = messages
+    .filter((m) => m.confidence !== undefined)
+    .pop()
+    ?.confidence;
+
+  let riskColor = "bg-text-dim/20";
+  let riskLabel = "idle";
+  if (latestConfidence !== undefined) {
+    if (latestConfidence >= 0.7) {
+      riskColor = "bg-accent";
+      riskLabel = `signal strength ${(latestConfidence * 100).toFixed(0)}%`;
+    } else if (latestConfidence >= 0.5) {
+      riskColor = "bg-warning";
+      riskLabel = `signal strength ${(latestConfidence * 100).toFixed(0)}%`;
+    } else {
+      riskColor = "bg-critical";
+      riskLabel = `signal strength ${(latestConfidence * 100).toFixed(0)}%`;
+    }
+  }
+
   return (
     <main className="flex h-screen w-screen overflow-hidden bg-base font-sans-app text-text antialiased">
       {/* Left Chat Window */}
@@ -280,6 +300,8 @@ export default function App() {
 
       {/* Right Product Workspace */}
       <div className="flex h-full flex-1 flex-col">
+        {/* Live Signal Strength Indicator */}
+        <div className={`h-1 w-full ${riskColor} transition-all duration-500`} title={riskLabel} />
         {/* B-4: Approval Banner */}
         {pendingApproval && (
           <ApprovalBanner
