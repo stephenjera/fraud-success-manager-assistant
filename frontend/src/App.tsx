@@ -264,7 +264,7 @@ export default function App() {
   };
 
   return (
-    <main className="flex h-screen w-screen overflow-hidden bg-slate-950 font-sans text-slate-100 antialiased">
+    <main className="flex h-screen w-screen overflow-hidden bg-base font-sans-app text-text antialiased">
       {/* Left Chat Window */}
       <div className="flex h-full w-[35%] max-w-[480px] min-w-[340px] flex-col">
         <ChatStream
@@ -289,33 +289,33 @@ export default function App() {
         )}
 
         {/* Workspace Navigation Bar */}
-        <div className="flex h-14 items-center justify-between border-b border-slate-800 bg-slate-900 px-6">
+        <div className="flex h-14 items-center justify-between border-b border-border bg-surface px-6">
           <div className="flex space-x-2">
             <button
               onClick={() => setActiveTab("grid")}
-              className={`rounded-lg px-4 py-1.5 font-mono text-xs font-medium transition ${
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
                 activeTab === "grid"
-                  ? "border border-slate-700 bg-slate-800 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
+                  ? "border border-border-highlight bg-surface-2 text-text shadow-sm"
+                  : "text-text-muted hover:text-text"
               }`}
             >
-              DuckDB Explorer Grid
+              Query Results
             </button>
             <button
               onClick={() => setActiveTab("rule_lab")}
-              className={`rounded-lg px-4 py-1.5 font-mono text-xs font-medium transition ${
+              className={`rounded-lg px-4 py-1.5 text-sm font-medium transition ${
                 activeTab === "rule_lab"
-                  ? "border border-slate-700 bg-slate-800 text-white shadow-sm"
-                  : "text-slate-400 hover:text-slate-200"
+                  ? "border border-border-highlight bg-surface-2 text-text shadow-sm"
+                  : "text-text-muted hover:text-text"
               }`}
             >
-              Rule Optimization Lab
+              Rule Testing
             </button>
           </div>
-          <span className="rounded border border-slate-800 bg-slate-950 px-2 py-1 font-mono text-[10px] tracking-widest text-slate-500 uppercase">
+          <span className="rounded border border-border bg-base px-2 py-1 font-mono-app text-[10px] tracking-widest text-text-dim uppercase">
             {activeTab === "grid"
-              ? "Relational Data View"
-              : "Rule Analytics Studio"}
+              ? "Data Explorer"
+              : "Rule Analytics"}
           </span>
         </div>
 
@@ -328,6 +328,7 @@ export default function App() {
               sqlValue={sqlQuery}
               onSqlChange={setSqlQuery}
               onExecuteRawSQL={() => executeGridQuery(sqlQuery)}
+              isPending={pendingApproval}
             />
           )}
 

@@ -7,6 +7,7 @@ interface DataGridProps {
   onExecuteRawSQL: () => void;
   sqlValue: string;
   onSqlChange: (val: string) => void;
+  isPending?: boolean;
 }
 
 export const DataGrid: React.FC<DataGridProps> = ({
@@ -15,9 +16,10 @@ export const DataGrid: React.FC<DataGridProps> = ({
   onExecuteRawSQL,
   sqlValue,
   onSqlChange,
+  isPending = false,
 }) => {
   return (
-    <div className="flex flex-col h-full bg-slate-950">
+    <div className="flex flex-col h-full bg-slate-950" data-pending={String(isPending)}>
       {/* SQL Execution Console area */}
       <div className="p-4 border-b border-slate-950 bg-slate-900 space-y-3">
         <div className="flex items-center justify-between">
