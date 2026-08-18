@@ -12,11 +12,11 @@ from app.common.observability import flush, is_configured
 from app.common.settings import settings
 
 if TYPE_CHECKING:
-    from collections.abc import AsyncIterator
+    from collections.abc import AsyncGenerator
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> AsyncIterator[None]:
+async def lifespan(_: FastAPI) -> AsyncGenerator[None, None]:
     """Flush pending observability events on shutdown."""
     yield
     flush()
