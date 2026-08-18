@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_file=_PROJECT_ROOT / ".env",
         env_file_encoding="utf-8",
+        # .env is shared with docker-compose (POSTGRES_*, PGADMIN_*); ignore
+        # anything that isn't an app setting instead of failing at import.
+        extra="ignore",
     )
 
     # Data
