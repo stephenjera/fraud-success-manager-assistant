@@ -1,15 +1,18 @@
+"""Structured JSON logging to stdout."""
+
 import json
 import logging
 import sys
 from typing import Any
 
-from app.config import settings
+from app.common.settings import settings
 
 
 class JSONFormatter(logging.Formatter):
-    """Custom formatter to emit clean, single-line JSON structures for aggregators."""
+    """Emit clean, single-line JSON log records for aggregators."""
 
     def format(self, record: logging.LogRecord) -> str:
+        """Serialise a log record to a single JSON line."""
         log: dict[str, Any] = {
             "timestamp": self.formatTime(record, "%Y-%m-%d %H:%M:%S"),
             "level": record.levelname,
@@ -22,22 +25,22 @@ class JSONFormatter(logging.Formatter):
         return json.dumps(log)
 
 
-def get_logger(name: str, json_logs: bool = True) -> logging.Logger:
+def get_logger(name: str, *, json_logs: bool = True) -> logging.Logger:
     """Create and return a logger that emits JSON-formatted logs to stdout.
 
     - Reuses an existing logger if already configured.
-    - Respects `LOG_LEVEL` environment variable (defaults to INFO).
+    - Honours the ``log_level`` setting (defaults to INFO).
     """
     logger = logging.getLogger(name)
 
     if logger.handlers:
         return logger
 
-    # Respect LOG_LEVEL env var
-    log_level = settings.LOG_LEVEL.upper()
+    # Respect the configured log level
+    log_level = settings.log_level.upper()
     try:
         level = getattr(logging, log_level)
-    except Exception:
+    except AttributeError:
         level = logging.INFO
 
     logger.setLevel(level)
@@ -46,7 +49,8 @@ def get_logger(name: str, json_logs: bool = True) -> logging.Logger:
     if json_logs:
         handler.setFormatter(JSONFormatter())
     else:
-        handler.setFormatter(logging.Formatter("%(asctime)s %(levelname)s %(name)s %(message)s"))
+        plain = "%(asctime)s %(levelname)s %(name)s %(message)s"
+        handler.setFormatter(logging.Formatter(plain))
 
     logger.addHandler(handler)
     logger.propagate = False

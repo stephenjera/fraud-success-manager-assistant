@@ -1,0 +1,40 @@
+services:
+  db:
+    container_name: postgres
+    hostname: dockerhost
+    image: pgvector/pgvector:pg16
+    ports:
+      - "5432:5432"
+    restart: always
+    environment:
+      POSTGRES_USER: $POSTGRES_USER
+      POSTGRES_PASSWORD: $POSTGRES_PW
+      POSTGRES_DB: $POSTGRES_DB
+      POSTGRES_INITDB_ARGS: $POSTGRES_INITDB_ARGS
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+    volumes:
+      - ./database:/var/lib/postgresql/data
+      - ./db/init:/docker-entrypoint-initdb.d
+
+  pgadmin:
+    container_name: pgadmin
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=$PGADMIN_MAIL
+      - PGADMIN_DEFAULT_PASSWORD=$PGADMIN_PW
+    ports:
+      - "5050:80"
+    restart: always
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./servers.json:/pgadmin4/servers.json
