@@ -10,10 +10,15 @@ dependencies = [
     "langchain-ollama>=1.1.0",
     "langfuse>=4.14.4",
     "langgraph>=1.2.11",
+    "langgraph-checkpoint-postgres",
+    "psycopg[binary]>=3.2.0",
     "pydantic>=2.13.4",
     "pydantic-settings>=2.14.1",
+    "sqlglot>=25.0.0",
     "sqlalchemy>=2.0.52",
     "uvicorn>=0.49.0",
+    "alembic>=1.14.0",
+    "langchain-openai>=0.3",
 ]
 
 [tool.ruff.lint]
@@ -39,6 +44,7 @@ ignore = [
     "T201",   # `print` found
     "TRY003", # Avoid specifying long messages outside the exception class
     "EM102",  # help: Exception must not use an f-string literal, assign to variable first Assign to variable; remove f-string literal
+    "E501",   # Line too long — prompt/tool description strings read better unwrapped
 ]
 
 # Docstring style
@@ -52,3 +58,9 @@ dev = [
     "pytest>=9.0.3",
     "ruff>=0.16.1",
 ]
+
+[tool.pytest.ini_options]
+# Only collect the real suite; `database/` (a non-owned, unreadable dir) is not
+# code we test and must not be scanned. `pythonpath` makes `app` importable.
+testpaths = ["tests"]
+pythonpath = ["."]

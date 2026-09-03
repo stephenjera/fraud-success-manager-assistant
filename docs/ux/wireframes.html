@@ -1,0 +1,330 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fraud Insight &amp; Rule Copilot — wireframes</title>
+<style>
+  :root{
+    --ink:#1e1e1e; --line:#1e1e1e; --soft:#6b7280; --bg:#fafafa;
+    --box:#ffffff; --pane:#f3f4f6; --accent:#2563eb; --warn:#b45309;
+  }
+  *{box-sizing:border-box}
+  body{font:14px/1.45 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+       color:var(--ink);background:var(--bg);margin:0;padding:32px 40px 80px}
+  h1{font-size:20px;margin:0 0 4px;letter-spacing:-.01em}
+  h2{font-size:15px;margin:40px 0 4px;display:flex;align-items:baseline;gap:10px}
+  h2 .no{color:var(--soft);font-weight:400}
+  .sub{color:var(--soft);margin:0 0 14px;font-size:13px}
+  .frame{border:1.5px solid var(--line);background:var(--box);border-radius:6px;
+         padding:14px;position:relative;overflow:hidden}
+  .bar{border:1px dashed var(--line);border-radius:5px;padding:8px 10px;margin:8px 0;
+       display:flex;gap:10px;flex-wrap:wrap;align-items:center;background:var(--pane)}
+  .bar.tall{min-height:120px}
+  .bar.mid{min-height:200px}
+  .lbl{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+       margin-bottom:6px}
+  .pill{border:1px solid var(--line);border-radius:14px;padding:3px 9px;font-size:12px;
+        background:var(--box)}
+  .grid{display:grid;gap:10px}
+  .g3{grid-template-columns:210px 1fr 200px}
+  .g3narrow{grid-template-columns:210px 0.72fr 1.28fr} /* rail pushed wide */
+  .api{font-size:11px;color:var(--accent);border:1px dashed var(--accent);
+       border-radius:4px;padding:2px 6px;white-space:nowrap}
+  .api.get{color:#0e7490;border-color:#0e7490}
+  .api.post{color:#b45309;border-color:#b45309}
+  .api.sse{color:#6d28d9;border-color:#6d28d9}
+  .note{font-size:11px;color:var(--soft);margin:5px 0 0}
+  .col-h{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+         color:var(--soft);margin:2px 0}
+  .btn{border:1.5px solid var(--line);border-radius:5px;padding:5px 12px;font-size:12px;
+       font-weight:700;background:var(--box);display:inline-block}
+  .btn.solid{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .card{border:1px solid var(--line);border-radius:5px;padding:7px 9px;background:var(--box);
+        font-size:12px}
+  .card .k{font-size:10px;text-transform:uppercase;letter-spacing:.05em;color:var(--soft);
+           display:block;margin-bottom:2px}
+  .table{border:1px solid var(--line);border-radius:5px;overflow:hidden;font-size:11px}
+  .table div{padding:5px 8px;border-bottom:1px solid #e5e7eb}
+  .table div:last-child{border-bottom:0}
+  .table .head{background:var(--pane);font-weight:700;font-size:10px;
+               text-transform:uppercase;letter-spacing:.04em}
+  .sql{border:1px solid var(--line);border-radius:5px;padding:8px 10px;background:#f8fafc;
+       font-size:12px;white-space:pre-wrap;color:#0f172a}
+  .legend{display:flex;gap:16px;flex-wrap:wrap;font-size:11px;margin:6px 0 0}
+  .flag{border:1.5px solid var(--warn);background:#fff7ed;border-radius:6px;
+        padding:10px 14px;margin-top:16px;font-size:12.5px}
+  .flag b{color:var(--warn)}
+  table.map{border-collapse:collapse;width:100%;margin-top:12px;font-size:12.5px}
+  table.map th,table.map td{border:1px solid #d1d5db;padding:6px 9px;text-align:left;vertical-align:top}
+  table.map th{background:var(--pane);font-size:11px;text-transform:uppercase;letter-spacing:.04em}
+  .ok{color:#15803d;font-weight:700}
+  .cf{color:var(--warn);font-weight:700}
+  .foot{margin-top:40px;color:var(--soft);font-size:12px;border-top:1px solid #d1d5db;padding-top:14px}
+  .arrow{color:var(--soft);font-size:13px}
+</style>
+</head>
+<body>
+
+<h1>Fraud Insight &amp; Rule Copilot — wireframes</h1>
+<p class="sub">Sketch-level layout, not the real UI (no Tailwind/shadcn, deliberately). Each element is tagged with
+the API element it reads from or drives, so the "can we support this / does something need to change"
+check lives in the diagram. Source: <span class="api get">GET</span> <span class="api post">POST</span>
+<span class="api sse">SSE</span> → <a href="../architecture/api-contract.md">api-contract</a>, spec §13.</p>
+<div class="legend">
+  <span><span class="api get">GET</span> read</span>
+  <span><span class="api post">POST</span> command</span>
+  <span><span class="api sse">SSE</span> stream event</span>
+  <span style="color:var(--soft)">dashed box = region &nbsp;·&nbsp; solid = control</span>
+</div>
+
+<!-- 1 -->
+<h2><span class="no">1</span> Main view — three panes</h2>
+<p class="sub">The default layout: chat (left) · SQL/results workspace (center) · insights rail (right).</p>
+<div class="frame">
+  <div class="bar">
+    <span class="pill">Fraud Insight &amp; Rule Copilot</span>
+    <span class="arrow">⇣</span>
+    <span class="pill">Conversation&nbsp;▾</span>
+    <span class="api get">GET /v1/conversations</span>
+    <span class="api get">GET /v1/conversations/{id}</span>
+    <span style="margin-left:auto" class="pill">＋ New conversation</span>
+    <span class="api post">POST /v1/conversations</span>
+    <span style="margin-left:16px" class="btn solid">Rules Catalog →</span>
+  </div>
+
+  <div class="grid g3">
+    <!-- left -->
+    <div>
+      <div class="col-h">Chat</div>
+      <div class="bar tall">
+        <span class="card" style="border-color:#d1d5db"><span class="k">user</span>How many failed txns by region this month?</span>
+        <span class="card" style="border-color:#d1d5db"><span class="k">assistant</span>Running query… <span class="api sse">message.delta</span></span>
+        <div class="note">turn stream <span class="api get">GET /…/messages</span></div>
+        <div class="note">live activity <span class="api sse">tool_call.start</span> <span class="api sse">tool_call.done</span></div>
+        <div style="margin-top:auto">
+          <span class="pill">running…</span> <span class="api sse">run.start</span> → <span class="api sse">run.done | run.error | run.timeout</span>
+        </div>
+      </div>
+      <div class="bar" style="margin-top:10px">
+        <span class="card" style="flex:1"><span class="k">composer</span>Type a question…</span>
+        <span class="btn solid">Send</span>
+        <div class="note" style="margin-left:0">fires <span class="api post">POST /…/messages</span> → <code>201 {run_id}</code></div>
+      </div>
+    </div>
+
+    <!-- center -->
+    <div>
+      <div class="col-h">Workspace</div>
+      <div class="sql">SELECT region, COUNT(*) AS failed
+FROM transactions
+WHERE status='failed' AND t &gt;= now() - interval '1 month'
+GROUP BY region ORDER BY failed DESC</div>
+      <div style="margin:8px 0;display:flex;gap:10px;align-items:center">
+        <span class="btn solid">Run</span>
+        <span class="note" style="margin:0">edit-and-own → <span class="api post">POST /…/rerun</span> (sync)</span>
+      </div>
+      <div class="table">
+        <div class="head">region · failed</div>
+        <div>EMEA · 1,204 &nbsp;···&nbsp; APAC · 891 &nbsp;···&nbsp; NA · 640 &nbsp;(n rows)</div>
+      </div>
+      <div style="margin-top:8px;display:flex;gap:8px;flex-wrap:wrap">
+        <span class="card"><span class="k">explanation</span>aggregated failed txns …</span>
+        <span class="card"><span class="k">assumptions</span>“failed” = status='failed' …</span>
+        <span class="card"><span class="k">flags</span>row_cap · truncation …</span>
+      </div>
+      <div class="note">grounding object = the ADR-0006 typed payload · <span class="api get">GET /…/messages/{mid}</span></div>
+      <div style="margin-top:8px;display:flex;gap:8px;align-items:center">
+        <span class="pill">revisions</span>
+        <span class="arrow">rev-2 ← rev-1</span>
+        <span class="api get">GET /…/revisions</span>
+        <span style="margin-left:auto"></span>
+        <span class="btn">Pin insight →</span>
+      </div>
+      <div class="note">pin needs the live revision id + sql → <span class="api post">POST /…/insights</span> (Gap B: both REQUIRED)</div>
+    </div>
+
+    <!-- right -->
+    <div>
+      <div class="col-h">Insights rail</div>
+      <div class="bar tall" style="flex-direction:column;align-items:stretch">
+        <span class="card"><span class="k">pinned · collapsed</span>Failed-txn EMEA spike
+          <div class="note" style="margin-top:4px">not yet evaluated</div></span>
+        <span class="card"><span class="k">pinned · collapsed</span>High-value debit · unknown MCC
+          <div class="note" style="margin-top:4px">precision 0.42 · FPR 12%</div></span>
+        <div class="note" style="margin-top:auto">list <span class="api get">GET /…/insights</span></div>
+        <div style="margin-top:8px"><span class="btn" style="width:100%;text-align:center">Evaluate</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 2 -->
+<h2><span class="no">2</span> Rail pushed wide — evaluate an insight</h2>
+<p class="sub">Spec §13: clicking <em>Evaluate</em> push-expands the rail into a full metrics panel; the center pan narrows,
+it does not overlay. The SQL that produced the insight stays visible on the left.</p>
+<div class="frame">
+  <div class="grid g3narrow">
+    <!-- left: chat (narrowed) -->
+    <div>
+      <div class="col-h">Chat</div>
+      <div class="bar mid"><div class="note">…turn stream…</div>
+        <div style="margin-top:auto"><span class="btn" style="width:100%;text-align:center">Send</span></div>
+      </div>
+    </div>
+
+    <!-- center: source SQL stays visible -->
+    <div>
+      <div class="col-h">Source query</div>
+      <div class="sql">SELECT t.* FROM transactions t
+WHERE amount &gt; 5000
+  AND card_type='debit'
+  AND mcc_code NOT IN (known MCCs)</div>
+      <div class="note">the SQL behind this insight — kept in view while the metrics panel reads it</div>
+    </div>
+
+    <!-- right: metrics panel (rail pushed wide) -->
+    <div>
+      <div class="col-h">Metrics — <span id="x">rule</span> “High-value debit · unknown MCC”</div>
+      <div style="display:flex;gap:8px">
+        <span class="card" style="flex:1"><span class="k">precision</span>0.42</span>
+        <span class="card" style="flex:1"><span class="k">coverage</span>8.3%</span>
+        <span class="card" style="flex:1"><span class="k">FPR</span>12%</span>
+      </div>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <span class="card" style="flex:1"><span class="k">recall</span>0.31</span>
+        <span class="card" style="flex:1"><span class="k">lift</span>5.1×</span>
+      </div>
+      <div class="note">headline + supporting = <b>BacktestResult.metrics</b> + <b>.coverage</b> + <b>.temporal_stability</b></div>
+      <div class="table" style="margin-top:8px">
+        <div class="head">earlier&nbsp;/&nbsp;later slice (temporal stability)</div>
+        <div>p = 0.40 / 0.44 &nbsp;·&nbsp; r = 0.29 / 0.33</div>
+      </div>
+      <div class="table" style="margin-top:8px">
+        <div class="head">eyeball the matches · sample</div>
+        <div>id · amount · mcc · card_type — 5 rows <span class="note">(.sample, “I don’t trust aggregates”)</span></div>
+      </div>
+      <div style="margin-top:10px;display:flex;gap:8px">
+        <span class="btn solid">Approve</span>
+        <span class="btn">Reject</span>
+        <span class="note" style="margin-left:auto">metrics fired by <span class="api post">POST /v1/rules/{id}/backtest</span>; read back <span class="api get">GET /…/backtests</span></span>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 3 -->
+<h2><span class="no">3</span> Rule Catalog — separate page</h2>
+<p class="sub">“Browse everything, across sessions” (spec §13) — a different task from the rail, so it is a different page, not a tab.</p>
+<div class="frame">
+  <div class="bar">
+    <span class="pill solid" style="font-weight:700">Rules Catalog</span>
+    <span style="margin-left:16px" class="pill">status: all ▾</span>
+    <span class="pill">draft ▾</span><span class="pill">backtested</span><span class="pill">approved</span>
+    <span class="pill">deployed</span><span class="pill">rejected</span>
+    <span style="margin-left:auto"></span>
+    <span class="note" style="margin-left:auto">filter param → <span class="api get">GET /v1/rules?status=…</span></span>
+  </div>
+
+  <div class="grid" style="grid-template-columns:1fr 1fr;margin-top:12px;gap:12px">
+    <div>
+      <div class="btn" style="width:100%;text-align:center;border-style:dashed">rule cards, filtered by status
+        <div class="note" style="text-align:center;margin-top:6px;border:0"><span class="api get">GET /v1/rules</span> — one per row: id · title · where-clause · status chip</div>
+      </div>
+    </div>
+    <div>
+      <div class="bar" style="height:100%">
+        <div style="writing-mode:vertical-rl;transform:rotate(180deg);font-size:11px;font-weight:700;color:var(--soft)">detail drawer →</div>
+        <div style="flex:1;display:flex;flex-direction:column;gap:6px">
+          <div class="card"><span class="k">sql</span>SELECT … WHERE amount&gt;5000 …</div>
+          <div class="card"><span class="k">provenance</span>insight “High-value debit…” · conversation c-3</div>
+          <div class="card"><span class="k">latest backtest</span>precision 0.42 · lift 5.1× <div class="note"><span class="api get">GET /…/backtests/{bid}</span></div></div>
+          <div class="card" style="display:flex;gap:6px;align-items:center"><span class="pill">status: backtested</span>
+            <span style="margin-left:auto;display:flex;gap:4px"><span class="btn solid" style="font-size:11px">approve</span><span class="btn" style="font-size:11px">reject</span><span class="btn" style="font-size:11px">deploy</span></span></div>
+          <div class="note">approve→<span class="api post">POST /…/approve</span> · reject→<span class="api post">POST /…/reject</span> · deploy→<span class="api post">POST /…/deploy</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- 4 -->
+<h2><span class="no">4</span> Edit-and-own — a rerun bumps the revision</h2>
+<p class="sub">The whole point of spec §7.1: the FSM edits the running SQL, re-execute is synchronous (no run, no stream),
+and the result becomes the new live query with a new revision id.</p>
+<div class="frame">
+  <div style="display:flex;gap:10px;align-items:center;margin-bottom:8px">
+    <span class="pill">revisions</span>
+    <span class="pill" style="border-color:#c2c7d0">rev-1 <span class="note" style="margin:0">(agent)</span></span>
+    <span class="arrow">←</span>
+    <span class="pill" style="border-color:var(--ink);font-weight:700">rev-2 <span class="note" style="margin:0">(you edited)</span></span>
+    <span style="margin-left:auto"></span>
+    <span class="note" style="margin-left:auto"><span class="api get">GET /…/revisions</span></span>
+  </div>
+  <div class="sql" style="border-color:var(--ink)">SELECT region, COUNT(*) AS failed
+FROM transactions
+WHERE status='failed' AND t &gt;= now() - interval '1 month'      -- ← amount floor added
+GROUP BY region ORDER BY failed DESC</div>
+  <div style="margin:10px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+    <span class="btn solid">Re-run</span>
+    <span class="note" style="margin:0"><span class="api post">POST /…/messages/{mid}/rerun</span> → <code>200 {revision_id:"rev-2", result, flags}</code> — synchronous, no LLM</span>
+  </div>
+  <div class="table">
+    <div class="head">updated result — live query for this thread is now rev-2</div>
+    <div>EMEA · 1,188 &nbsp;···&nbsp; APAC · 872 &nbsp;···&nbsp; NA · 631 &nbsp;(refreshed)</div>
+  </div>
+  <div class="flag">
+    <b>Wall intact:</b> a rerun still goes through <code>validate_sql</code> (sqlglot, ADR-0002) and the sanity
+    <code>flags</code> — the <em>wall</em> is the same as the agent’s draft (ADR-0005); only the transport is a
+    deterministic re-execute, not a model run.
+  </div>
+</div>
+
+<!-- coverage -->
+<h2><span class="no" style="color:var(--ink)">Coverage check</span> — does the API support these frames?</h2>
+<p class="sub">Every affordance above mapped to a contract element. One seam needs a decision (flagged).</p>
+<table class="map">
+  <thead><tr><th>Frame</th><th>UI element</th><th>API element</th><th>Status</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Conversation switcher / new</td><td><code>GET /v1/conversations</code> · <code>POST /v1/conversations</code></td><td class="ok">covered</td></tr>
+    <tr><td>1</td><td>Chat turn stream / live activity</td><td><code>GET /…/messages</code> · SSE <code>tool_call.*</code>, <code>message.delta</code></td><td class="ok">covered</td></tr>
+    <tr><td>1</td><td>Composer → answer</td><td><code>POST /…/messages</code> → <code>201 {run_id}</code> · SSE <code>run.*</code></td><td class="ok">covered</td></tr>
+    <tr><td>1</td><td>Run status chip</td><td>SSE terminals <code>run.done | run.error | run.timeout</code></td><td class="ok">covered</td></tr>
+    <tr><td>1</td><td>Live SQL + cards + table</td><td>Message DTO <code>grounding{}</code> · <code>GET /…/messages/{mid}</code></td><td class="ok">covered</td></tr>
+    <tr><td>1</td><td>Pin insight</td><td><code>POST /…/insights</code> (message_id + revision_id + sql)</td><td class="ok">covered</td></tr>
+    <tr><td>1</td><td>Insight cards</td><td><code>GET /…/insights</code> · <code>GET /v1/insights/{id}</code></td><td class="ok">covered</td></tr>
+    <tr><td>2</td><td>Metrics panel (precision/coverage/FPR, stability, sample)</td><td>BacktestResult <code>.metrics .coverage .temporal_stability .sample</code></td><td class="ok">covered</td></tr>
+    <tr><td>2</td><td><b>Evaluate</b> on a pinned <b>insight</b></td><td>metrics fire on a <b>rule</b>: <code>POST /v1/rules/{id}/backtest</code> — needs a rule first</td><td class="cf">confirm</td></tr>
+    <tr><td>3</td><td>Catalog list + status filter</td><td><code>GET /v1/rules?status=…</code></td><td class="ok">covered</td></tr>
+    <tr><td>3</td><td>Detail drawer + lifecycle verbs</td><td><code>GET /v1/rules/{id}</code> · <code>POST /…/approve | reject | deploy</code></td><td class="ok">covered</td></tr>
+    <tr><td>4</td><td>Rerun + revision bump</td><td><code>POST /…/messages/{mid}/rerun</code> → <code>200 {revision_id, result, flags}</code> · <code>GET /…/revisions</code></td><td class="ok">covered</td></tr>
+  </tbody>
+</table>
+
+<div class="flag">
+  <b>One thing to decide — the rail’s “Evaluate”.</b>
+  Frame 1 and 2 show an <em>Evaluate</em> button on a <b>pinned insight</b>. But the contract’s backtest is a
+  <b>rule</b> verb (<code>POST /v1/rules/{id}/backtest</code>), not an insight verb — an insight has no metrics until a
+  rule draft exists. Two coherent shapes, pick one before Frame 2 is built:
+  <br><br>
+  <b>(a) Two-step, one button.</b> “Evaluate” silently fires <code>POST /v1/insights/{id}/draft-rule</code> then
+  <code>POST /v1/rules/{id}/backtest</code> → the rail shows the rule’s metrics. Simple UX; but a draft rule now
+  exists behind a button the FSM read as “just evaluate.”
+  <br>&nbsp;&nbsp;&nbsp;&nbsp;<b>(b) Explicit hand-off.</b> The rail button is <em>Draft rule</em> (→ rule created); the
+  rule then owns its own <em>Evaluate</em> (backtest) in the catalog/detail. Matches the state machine
+  (insight → draft → backtested) exactly, no hidden writes.
+  <br><br>
+  Nothing in the contract blocks either — it’s a <em>UI semantics</em> call. Recommend <b>(b)</b>: it makes the
+  insight→rule→backtest line (ADR-0005 wall, one trigger per edge in <code>rule-lifecycle.md</code>) visible in the UI
+  instead of tucked inside a button. No API change required for either; only the button label/handling differs.
+</div>
+
+<div class="foot">
+  Sketches only — plain HTML/CSS, no dependencies, opens in any browser. Not representative of the final
+  React/Tailwind/shadcn build (ADR-0009 <code>features/</code> + <code>components/ui/</code>). The real build maps
+  frame 1–2 → <code>features/{chat,workspace,insights}</code>, frame 3 → <code>features/catalog</code>.
+  <br>Pairs with: <a href="wireframes.md">wireframes.md</a> · <a href="../architecture/api-contract.md">api-contract.md</a> · <a href="../architecture/rule-lifecycle.md">rule-lifecycle.md</a>
+</div>
+
+</body>
+</html>

@@ -50,11 +50,18 @@ def get_model(**kwargs: Any) -> BaseChatModel:
         )
         raise ValueError(msg)
 
-    if provider in _API_KEY_PROVIDERS and not settings.llm_api_key:
+    if provider in _API_KEY_PROVIDERS and not settings.llm_api_key and "api_key" not in kwargs:
         msg = f"LLM_API_KEY is required for provider '{provider}'."
         raise ValueError(msg)
 
     if provider == "ollama":
-        kwargs.setdefault("base_url", settings.llm_api_base)
+        # Ollama's native /api/chat (ChatOllama) rejects tool-continuation
+        # transcripts on 0.33.x (tool_call `arguments` sent as a JSON string
+        # fail to parse). Its OpenAI-compatible /v1 endpoint accepts the same
+        # transcript with the stable OpenAI tool schema. Route Ollama through
+        # the openai provider so ChatOpenAI targets `{base}/v1`.
+        provider = "openai"
+        kwargs.setdefault("base_url", settings.llm_api_base.rstrip("/") + "/v1")
+        kwargs.setdefault("api_key", settings.llm_api_key or "ollama")
 
     return init_chat_model(model=model, model_provider=provider, **kwargs)

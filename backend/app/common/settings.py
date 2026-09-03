@@ -21,8 +21,15 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Data
-    db_path: str = ""
+    # Postgres (ADR-0007: one cluster, two schemas, two roles).
+    # The DSNs carry their own search_path (options=-csearch_path=…) so the
+    # roles can resolve unqualified table names to their intended schema.
+    pg_dsn: str = "postgresql://postgres:postgres@localhost:5433/fraud"
+    reference_dsn: str = "postgresql://reference_readonly:reference_readonly@localhost:5433/fraud?options=-csearch_path%3Dreference"
+    appstate_dsn: str = "postgresql://app_rw:app_rw@localhost:5433/fraud?options=-csearch_path%3Dappstate"
+    run_timeout_s: int = 60
+    # LLM model + run budgets
+    turn_wall_clock_s: int = 120
 
     # LLM (provider-agnostic; see app.common.model.get_model)
     llm_provider: str = "ollama"

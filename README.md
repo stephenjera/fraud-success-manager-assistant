@@ -4,12 +4,16 @@ An AI copilot for fraud analysts: natural-language exploration of transaction
 data, pattern validation, and rule drafting — ending in a backtested, fully
 provenanced SQL `WHERE` clause rule ready for a downstream rule engine.
 
-**Status:** V5 baseline. The repo contains the specification, the
-infrastructure skeleton (config, model loading, logging, observability,
-health endpoints, frontend scaffold), and the dev dataset. The feature work
-described by the spec (agents, API surface, rule lifecycle, eval suite) has
-not been started yet. The spec is the source of truth for what comes next:
-[`fraud-insight-copilot-spec.md`](./fraud-insight-copilot-spec.md).
+**Status:** P0 frozen. The design is complete — specs, ADRs, and all
+architecture docs are accepted and the P0 freeze has landed. The feature
+work (agents, API surface, rule lifecycle, eval suite) is the next phase.
+The spec is the source of truth for what comes next:
+[`docs/system-spec.md`](./docs/system-spec.md).
+
+The decision record lives in [`docs/decisions/`](./docs/decisions/)
+(ADR-0001 through ADR-0012). The detailed design docs live in
+[`docs/architecture/`](./docs/architecture/). The UX frames live in
+[`docs/ux/wireframes.html`](./docs/ux/wireframes.html).
 
 ## Repository layout
 

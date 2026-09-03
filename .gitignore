@@ -35,3 +35,8 @@ backend/database/
 .DS_Store
 .idea/
 .vscode/
+
+# ad-hoc scratch (e2e scripts, one-off tests, logs)
+tmp/
+.playwright-mcp
+logs

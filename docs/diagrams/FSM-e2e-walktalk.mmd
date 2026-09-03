@@ -1,0 +1,95 @@
+sequenceDiagram
+  autonumber
+  actor U as FSM
+  participant API as API /v1
+  participant AG as Agent LangGraph
+  participant C as core gates
+  participant DB as Postgres
+
+  Note over U,DB: Phase 1 - Session start
+  U->>API: GET /v1/health/ready
+  API-->>U: 200 ready true
+
+  Note over U,DB: Phase 2 - Explore NL to SQL
+  U->>API: POST /v1/conversations
+  API-->>U: 201 conversation_id
+  U->>API: POST /v1/conversations/c1/messages text
+  API-->>U: 201 message_id run_id status running
+  U->>U: I read the SQL and see the agent wrote txn_count over 1000
+  Note over U: I want amount over 5000 card_type debit
+  U->>API: GET /v1/runs/run-9c1/events SSE
+  API-->>U: run.start
+  API-->>U: tool_call.start run_sql
+  AG->>C: validate_sql sqlglot
+  C->>DB: SELECT as reference_readonly
+  DB-->>C: rows
+  C->>C: flags
+  API-->>U: tool_call.done result_summary
+  API-->>U: message.delta
+  API-->>U: run.done message_id tokens
+  U->>API: GET /v1/conversations/c1/messages/m1
+  API-->>U: status success grounding sql explanation assumptions flags revisions rev-1
+
+  Note over U,DB: Phase 3 - Edit plus re-run (Gap H sync)
+  U->>API: POST /v1/conversations/c1/messages/m1/rerun sql
+  API->>C: validate_sql and execute no LLM
+  C->>DB: SELECT
+  C-->>API: rows plus flags
+  API-->>U: 200 message_id revision_id rev-2 result flags
+  U->>API: GET /v1/conversations/c1/messages/m1
+  API-->>U: revisions rev-2 rev-1 live is rev-2
+
+  Note over U,DB: blip - my stream from the first run dies
+  U->>API: GET /v1/runs/run-9c1
+  API-->>U: status success
+  U->>API: GET /v1/conversations/c1/messages/m1
+  API-->>U: answer still there state is the product
+
+  Note over U,DB: Phase 4 - Pin the insight (Gap B)
+  U->>API: POST /v1/conversations/c1/insights message_id revision_id rev-2 sql
+  API-->>U: 201 insight_id
+  Note over U: pinned rev-2 exactly the SQL I saw (no silent swap)
+  U->>API: GET /v1/conversations/c1/insights
+  API-->>U: envelope insight cards
+  U->>API: GET /v1/insights/ins-7
+  API-->>U: insight detail with revision_id sql
+
+  Note over U,DB: Phase 5 - Draft plus backtest (Gap C)
+  U->>API: POST /v1/insights/ins-7/draft-rule
+  API->>AG: draft WHERE from this insight
+  API-->>U: 201 rule_id draft_where rationale
+  U->>API: GET /v1/rules/r-3
+  API-->>U: rule with status draft
+  U->>U: tighten the WHERE
+  U->>API: PATCH /v1/rules/r-3 where_clause
+  API-->>U: 200 status draft
+  U->>API: POST /v1/rules/r-3/backtest
+  API->>C: backtest deterministic no LLM
+  C->>DB: SELECT join fraud_labels
+  C-->>API: TP FP FN TN precision recall FPR lift sample
+  API-->>U: 201 BacktestResult metrics confusion coverage temporal sample
+  Note over U: sample rows are there (I eyeball them before approving)
+  U->>API: GET /v1/rules/r-3/backtests
+  API-->>U: envelope backtest history
+  U->>API: GET /v1/rules/r-3/backtests/bt-1
+  API-->>U: full BacktestResult
+
+  Note over U,DB: Phase 6 - Approve deploy catalog
+  U->>API: POST /v1/rules/r-3/approve rationale actor
+  API-->>U: 200 status approved approved_by
+  U->>API: POST /v1/rules/r-3/deploy
+  API->>C: rule_engine.deploy_rule mock
+  API-->>U: 201 deployment_id external_rule_id
+  U->>API: GET /v1/rules/r-3/deployment
+  API-->>U: deployment record
+  U->>API: GET /v1/rules?status=approved
+  API-->>U: envelope catalog across conversations
+  Note over U: later - rule misbehaves
+  U->>API: POST /v1/rules/r-3/disable
+  API-->>U: 200 disabled_at
+
+  Note over U,DB: Phase 7 - Failure path (Gap A)
+  Note over U: the model writes bad SQL (a red-team fixture)
+  API-->>U: run.error code SQL_REJECTED
+  U->>API: GET /v1/conversations/c1/messages/m1
+  API-->>U: status error grounding null error code message details

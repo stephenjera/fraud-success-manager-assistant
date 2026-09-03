@@ -18,5 +18,15 @@ export default defineConfig([
     languageOptions: {
       globals: globals.browser,
     },
+    rules: {
+      // shadcn/cva convention: components export their variant helper alongside
+      // (button/badge/table). Splitting those into separate files is not the
+      // convention here — the "components only" rule is off.
+      'react-refresh/only-export-components': 'off',
+      // The established data pattern is fetch-in-effect + reset state on prop
+      // change (rail/workspace/catalog). Rewriting that to dodge a
+      // stylistic rule would be a large, lower-idiom diff — off.
+      'react-hooks/set-state-in-effect': 'off',
+    },
   },
 ])

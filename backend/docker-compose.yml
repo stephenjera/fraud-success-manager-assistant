@@ -23,7 +23,11 @@ services:
         max-file: "3"
     volumes:
       - ./database:/var/lib/postgresql/data
-      - ./db/init:/docker-entrypoint-initdb.d
+      # Adr-0015: infrastructure init (roles + schemas + appstate ownership) as
+      # idempotent .sql files in lexicographic order. Runs once per fresh volume
+      # (docker-entrypoint-initdb.d). Re-apply on an existing cluster with
+      # `psql -f db-init/*.sql`. Data lives in the seed, appstate tables in Alembic.
+      - ./db-init:/docker-entrypoint-initdb.d
 
   pgadmin:
     container_name: pgadmin

@@ -14,6 +14,21 @@ uv run python -m uvicorn app.main:app --reload --port 8000
 - `GET /api/health/ready` — LLM + Langfuse configuration state
 - `GET /docs` — OpenAPI
 
+## Live mode (P2.5)
+
+The default test suite and the shape walkthrough fake the LLM + `reference`
+reader for determinism. To prove the real ones work:
+
+```bash
+# Repeatable: real Ollama + real reference (needs Ollama up)
+.venv/bin/python scripts/e2e_walktalk.py --live
+# Interactive: type questions, watch the model's tool calls and grounded answer
+.venv/bin/python scripts/agent_repl.py
+```
+
+Full spec in the repo at `docs/architecture/e2e-walktalk.md` (the "Live mode
+and interactive REPL" section).
+
 ## Layout
 
 ```
