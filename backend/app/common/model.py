@@ -7,14 +7,12 @@ OpenAI, ...) by changing environment variables alone — no code changes.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from langchain.chat_models import init_chat_model
+from langchain_core.language_models.chat_models import BaseChatModel
 
 from app.common.settings import settings
-
-if TYPE_CHECKING:
-    from langchain_core.language_models.chat_models import BaseChatModel
 
 # Providers that require an explicit API key (local providers are exempt).
 _API_KEY_PROVIDERS: frozenset[str] = frozenset({"anthropic", "openai", "google_genai"})

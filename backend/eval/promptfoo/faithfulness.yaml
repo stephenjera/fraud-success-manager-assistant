@@ -1,0 +1,36 @@
+description: "FSM NL->SQL -- explanation faithfulness (judged)"
+
+# The faithfulness judge (shared/llm_check.py:faithfulness) compares the agent's
+# prose to the result set of the SINGLE grounded SQL it surfaced in metadata.sql.
+# Fixtures here are therefore single-query questions. (Multi-query breakdowns --
+# where the agent runs a second analysis query that never reaches metadata.sql --
+# belong in the correctness suite, not here.)
+#
+# Distinct model per spec: agent = qwen3.8 (Ollama); judge = gemma4:26b (Ollama).
+
+prompts:
+  - "{{question}}"
+
+providers:
+  - id: file://shared/provider.js
+    label: "agent (live)"
+
+defaultTest:
+  assert:
+    - type: python
+      value: file://shared/llm_check.py:faithfulness
+      metric: faithfulness
+
+tests:
+  # A plain count.
+  - vars:
+      question: "How many total transactions are there in the reference data?"
+  # A count with a JOIN + two WHERE predicates (unambiguous: transaction_type literal).
+  - vars:
+      question: "How many confirmed fraud transactions involve a chip transaction?"
+  # A grouped breakdown (the agent explains a small table).
+  - vars:
+      question: "Break down confirmed fraud transactions by card brand."
+  # A clarification-style question answered in one pass.
+  - vars:
+      question: "Are more or fewer of the confirmed fraud transactions chip transactions? Explain how you counted."

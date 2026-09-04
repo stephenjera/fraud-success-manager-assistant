@@ -5,7 +5,8 @@ data, pattern validation, and rule drafting — ending in a backtested, fully
 provenanced SQL `WHERE` clause rule ready for a downstream rule engine.
 
 **Status:** P0–P5 done (incl. P2.5, P3.5). `make lint` / `make test` /
-`make eval` all green.
+`make eval` all green. The LLM suites (`make eval-llm`) are live against the
+agent API with a distinct Ollama judge.
 The spec is the source of truth: [`docs/system-spec.md`](./docs/system-spec.md).
 
 The decision record lives in [`docs/decisions/`](./docs/decisions/)
@@ -97,15 +98,15 @@ All configuration is environment-driven via `pydantic-settings` (see
 
 ```bash
 cd backend
-make lint    # ruff check + format --check + mypy
-make test    # pytest suite
-make eval    # deterministic eval subset (validator, flags, backtest math, rule state, rule engine, wall)
+make lint     # ruff check + format --check + mypy
+make test     # pytest suite
+make eval     # deterministic eval subset (validator, flags, backtest math, rule state, rule engine, wall)
+make eval-llm # LLM suites vs the live agent: NL->SQL accuracy, faithfulness, safety (needs the API + Ollama judge)
 ```
 
 ## Deferred items
 
-Per spec §15, these are intentionally not built yet: the LLM-judged eval
-suite (NL→SQL accuracy, faithfulness, safety/redteam — deferred until a
-judge model is available), auth/RBAC, real rule-engine integration,
-post-deployment drift monitoring, feedback-loop learning.
+Per spec §15, these are intentionally not built yet: auth/RBAC, real
+rule-engine integration, post-deployment drift monitoring, feedback-loop
+learning. The LLM-judged eval suite is built and runs via `make eval-llm`.
 CI pipeline is out of scope until a real deployment target exists (ADR-0012).

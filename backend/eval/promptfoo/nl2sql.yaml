@@ -1,0 +1,35 @@
+# NL-2-SQL execution accuracy (spec 10.1): result-set equality between the agent's
+# SQL and the reference, NOT string match (eval-design.md). Only well-specified,
+# fully-determined questions live here -- each has exactly one correct answer
+# the agent should produce. Ambiguous/breakdown questions (where a good answer
+# may add a fraud column, an average, a percent, ...) are intentionally not here
+# because they belong in the FAITHFUL suite -- the judge grades "does the
+# explanation convey the right facts," not "does the result set match exactly."
+description: "FSM NL->SQL -- exact result-set accuracy"
+prompts:
+  - "{{question}}"
+providers:
+  - id: file://shared/provider.js
+    label: "agent (live)"
+defaultTest:
+  assert:
+    - type: python
+      value: file://shared/compare_sql.py:get_assert
+      metric: result-set-accuracy
+
+tests:
+  - vars:
+      question: "How many total transactions are there?"
+      reference_sql: "SELECT count(*) AS total FROM reference.transactions"
+
+  - vars:
+      question: "How many transactions have transaction_type 'Chip Transaction'?"
+      reference_sql: "SELECT count(*) AS chip FROM reference.transactions WHERE transaction_type = 'Chip Transaction'"
+
+  - vars:
+      question: "How many confirmed fraud transactions have transaction_type 'Chip Transaction'?"
+      reference_sql: "SELECT count(*) AS n FROM reference.fraud_labels fl JOIN reference.transactions t ON t.id = fl.transaction_id WHERE fl.is_fraud = 1 AND t.transaction_type = 'Chip Transaction'"
+
+  - vars:
+      question: "List the distinct card brands that have at least one confirmed fraud transaction."
+      reference_sql: "SELECT DISTINCT c.card_brand FROM reference.fraud_labels fl JOIN reference.transactions t ON t.id = fl.transaction_id JOIN reference.cards c ON c.id = t.card_id WHERE fl.is_fraud = 1 ORDER BY c.card_brand"

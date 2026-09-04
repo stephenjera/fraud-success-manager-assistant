@@ -1,10 +1,12 @@
-"""Slim eval harness that replaces promptfoo.
+"""Deterministic eval runner.
 
-Runs the deterministic pytest subset (validator, flags, backtest math,
-rule state, rule engine) and prints a summary. The LLM-evaluated suites
-(NL→SQL accuracy, explanation faithfulness, safety/refusal) are deferred
-until a judge model is available — they are documented in eval-design.md
-but not wired here (no promptfoo dependency, per P4 decision).
+Runs the pytest subset (validator, flags, backtest math, rule state, rule
+engine) and returns its exit code. It is `make eval` — the no-LLM gate.
+
+The LLM-evaluated suites (NL→SQL accuracy, explanation faithfulness,
+safety/refusal) live in `eval/promptfoo/` (nl2sql.yaml, faithfulness.yaml,
+safety.yaml) and run separately via `make eval-llm` against the live agent
+API with an Ollama judge (see docs/architecture/eval-design.md).
 """
 
 from __future__ import annotations
