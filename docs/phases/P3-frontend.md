@@ -1,7 +1,11 @@
-# P3 — Frontend — placeholder
+# P3 — Frontend
 
-**Status:** placeholder. Lands when P0 finishes; the wireframes in
-`../ux/wireframes.md` are the acceptance, not the description.
+**Status:** done (2026-09-03). All five DoD items verified. Chaos report
+(`P3-frontend-chaos-report.md`) completed: one real bug found (mid-stream
+SSE wedge), fixed, and re-verified. Build green (`npm run build`), no
+TODO/FIXME markers in frontend source. P3.5 infra gaps (Docker Compose at
+root, Playwright STREAM_LOST regression, sql_validator pg_catalog test)
+resolved separately.
 
 Builds the three-pane + catalog UI the spec §13 describes, **against the
 frozen API contract** (`../architecture/api-contract.md`) — that's the

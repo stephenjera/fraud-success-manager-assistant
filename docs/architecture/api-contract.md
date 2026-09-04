@@ -140,11 +140,17 @@ synchronously.
   "status": "success" | "error" | "timeout",
   "created_at": "2026-…",
   "grounding": {
-    "sql": "SELECT …",
+    "sql": "SELECT …" | null,
     "explanation": "…",
     "assumptions": ["…"],
     "tables_and_joins_used": ["…"],
-    "flags": ["…"]
+    "flags": ["…"],
+    "rule_proposal": {
+      "title": "…",
+      "where_clause": "amount > 5000 AND card_type = 'debit'",
+      "rationale": "…",
+      "assumptions": ["…"]
+    } | null
   } | null,
   "error": {
     "code": "SQL_REJECTED" | "RUN_TIMEOUT" | ...,
@@ -155,8 +161,11 @@ synchronously.
 }
 ```
 
-- On **success**: `grounding` is populated (the ADR-0006 typed object),
-  `error` is null.
+- `sql` is **nullable** (P5). A grounded answer that does not execute SQL
+  — e.g. the model synthesises from prior turns or proposes a rule based
+  on a pattern it identified — sets `sql` to null.  `grounding` is still
+  populated; `error` is null.  This is **not** an error: the agent
+  grounded its answer even without a query.
 - On **failure** (a `run.error` on the stream): `grounding` is null,
   `error` is populated. The response is still `200` — the *body* tells
   the story, the status code only says "the message exists."
@@ -206,24 +215,31 @@ well-formed stream emits exactly one of them.
 | `DELETE /v1/insights/{id}` | `204` | cascade: the rules with `source_insight_id = {id}`. |
 | `POST /v1/insights/{id}/draft-rule` | `201 {rule_id, draft_where, rationale, assumptions}` | the pin → draft bridge. Enforces "a rule can only originate from a pinned insight" (spec principle 5). FSM-explicit (you fired it), agent-generated (the content). |
 
-**Insight pin DTO (Gap B):**
+**Insight pin DTO (Gap B, P5 rule fields):**
 
 ```
 Body: {
   "message_id": "m1",
   "revision_id": "rev-2",              // REQUIRED — the exact revision being pinned
   "sql": "SELECT … WHERE amount > 5000 AND card_type = 'debit'",  // REQUIRED
-  "explanation": "…"                   // optional
+  "explanation": "…",                  // optional
+  // P5: model-proposed rule fields (all optional, core/rules validates clause)
+  "rule_title": "…",
+  "rule_where_clause": "amount > 5000 AND card_type = 'debit'",
+  "rule_rationale": "…",
+  "rule_assumptions": ["…"]
 }
 ```
 
-- `revision_id` — **required.** The *exact* revision being pinned. The
-  insight stores this, so a re-pin after more reruns does not silently
-  swap the SQL.
+- `rule_where_clause` — optional (P5). If present, the server runs it
+  through `core/rules.validate_where_clause` before storing.  Allows the
+  model to propose a rule without SQL — the clause is the gated
+  property (ADR-0005 wall).  When the FSM later fires
+  `POST /v1/insights/{id}/draft-rule`, the service prefers this stored
+  clause over `derive_where_clause(sql)`.
 - `sql` — **required.** The client *proves* to the server "I'm pinning
   this SQL I'm looking at." The server stores it verbatim. This is a
   stronger audit trail than a server-side "look up the live revision."
-- `explanation` — optional; the pinned explanation or null.
 
 Consequence: the insight is tied to a *revision*, not a *message*. A
 message can have many revisions; only the one the FSM chose to pin is the

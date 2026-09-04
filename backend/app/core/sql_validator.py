@@ -75,7 +75,10 @@ def validate_sql(sql: str) -> str:
     # A single statement is checked via sqlglot (len(parsed) == 1) below; a real
     # multi-statement with a mid-string `;` is caught there. We only strip the
     # decorative trailing `;` the model likes to add.
-    token = next((t for t in _FORBIDDEN_TOKENS if re.search(rf"\b{t}\b", text, re.IGNORECASE)), None)
+    token = next(
+        (t for t in _FORBIDDEN_TOKENS if re.search(rf"\b{t}\b", text, re.IGNORECASE)),
+        None,
+    )
     if token:
         raise SqlRejected(f"Read-only SELECT only (found {token!r}).", text)
 

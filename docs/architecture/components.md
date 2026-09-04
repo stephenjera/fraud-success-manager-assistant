@@ -11,7 +11,7 @@ The load-bearing distinction this doc keeps straight: **`services/` owns the HTT
 | package | role | reaches the DB? | reaches the LLM? |
 |---|---|---|---|
 | `app/api/routers/` | thin HTTP: parses the request, calls `services/`, serializes the DTO, returns. **No logic, no core calls, no LLM.** | no | no |
-| `app/services/` | orchestration + the SSE event emitter + budgets (recursion-limit is a config it passes; the wall-clock budget it `wait_for`s around `astream`). Owns the run lifecycle end-to-end: writes the `runs`/`messages` rows before the stream opens (Command/query split, ADR-0011), maps LangGraph stream output → the frozen event set, writes the final state (grounding or error), and owns the PostgresSaver construction (so the checkpointer's `app_rw` connection is opened **here**, not in the agent). | **yes** — `app_rw` (appstate) | no (it calls `agents/`, never the model directly) |
+| `app/services/` | orchestration + the SSE event emitter + budgets (recursion-limit is a config it passes; the wall-clock budget it `wait_for`s around `astream`). Owns the run lifecycle end-to-end: writes the `runs`/`messages` rows before the stream opens (Command/query split, ADR-0011), maps LangGraph stream output → the frozen event set, writes the final state (grounding or error). The LangGraph checkpointer is in-memory (ADR-0016) — `services/` does not construct PostgresSaver. | **yes** — `app_rw` (appstate) | no (it calls `agents/`, never the model directly) |
 | `app/agents/` | the LangGraph `StateGraph` (ADR-0003), the two tools (in `app/agents/tools.py`), the `structured_output` terminal node (ADR-0006). | **only via `core/`** — the two tools are the door | **yes** — the only LLM component |
 | `app/core/` | the deterministic gates: `sql_validator` (ADR-0002), `flags`, `backtest`, `rule_state`, `rule_engine` (the mock). Pure or read-only. | **yes** — `reference_readonly` (reference), via the pools `data/` owns | **no** |
 | `app/data/` | the two Postgres connection pools (`app_rw` for appstate, `repository` objects per table in `data-model.md`). No business logic; `core/` and `services/` call it, it calls Postgres. | yes (it *is* the pool) | no |
@@ -30,7 +30,7 @@ routers/messages.post
   → services.run.start()
       · write runs row(status=running) ──────────────────────────────────────────────────────────── data (app_rw)
       · write messages row(status=running)────────────────────────────────────────────────────── data (app_rw)
-      · construct compiled graph w/ PostgresSaver(app_rw) ────▶  (services owns the checkpointer)
+       · construct compiled graph w/ in-memory checkpointer (ADR-0016)
       · build RunnableConfig (thread_id=run_id, callbacks for Langfuse, recursion_limit)
       · emit run.start
       · astream(graph, config) ───────────────────────────────▶ model node

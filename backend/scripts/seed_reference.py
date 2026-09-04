@@ -115,7 +115,9 @@ def seed() -> dict[str, int]:
             # an existing grant is harmless, and this makes `psql -f` repair a broken grant
             # without a fresh volume.
             cur.execute("GRANT USAGE ON SCHEMA reference TO reference_readonly;")
-            cur.execute("GRANT SELECT ON ALL TABLES IN SCHEMA reference TO reference_readonly;")
+            cur.execute(
+                "GRANT SELECT ON ALL TABLES IN SCHEMA reference TO reference_readonly;"
+            )
             for table in _DDL:
                 cur.execute(f"TRUNCATE reference.{table} RESTART IDENTITY")
     except Exception:

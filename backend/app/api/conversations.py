@@ -140,7 +140,11 @@ def rerun(conversation_id: str, message_id: str, body: RerunIn) -> dict[str, Any
     try:
         result = core_db.run_readonly_query(safe)
     except core_db.SqlExecutionError as exc:
-        raise errors.ApiError(errors.INTERNAL_ERROR, "The SQL failed to execute against the reference data.", details={"error": str(exc)}) from exc
+        raise errors.ApiError(
+            errors.INTERNAL_ERROR,
+            "The SQL failed to execute against the reference data.",
+            details={"error": str(exc)},
+        ) from exc
     total = core_db.count_rows(sql_validator.primary_table(body.sql) or "")
     fl = core_flags.run(result, total_rows=total)
     preview = store.revision_preview(body.sql)

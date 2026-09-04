@@ -18,6 +18,11 @@ import type {
 } from "@/lib/types"
 import { rulesApi } from "../catalog/api"
 
+// P5: check if this insight carries a model-proposed rule.
+function hasProposal(ins: Insight): boolean {
+  return !!ins.rule_title && !!ins.rule_where_clause
+}
+
 // --- this feature's list/detail calls (insights are per-conversation) --------
 const insightsApi = {
   list: (conversationId: string) =>
@@ -88,7 +93,7 @@ function MetricsPanel({ state, onClose, onVerb }: MetricsPanelProps) {
           <div className="text-[0.65rem] font-medium uppercase tracking-widest text-muted-foreground">
             Metrics — <span className="lowercase">{state.ruleStatus}</span>
           </div>
-          <div className="mt-1 line-clamp-2 break-words font-mono text-xs text-foreground/90" title={state.insight.sql}>
+          <div className="mt-1 line-clamp-2 break-words font-mono text-xs text-foreground/90" title={state.insight.sql ?? undefined}>
             {state.insight.sql}
           </div>
         </div>
@@ -259,20 +264,42 @@ function InsightsRail({ conversationId, expanded, onToggleExpanded, refreshKey }
         ) : (
           insights.map((ins) => {
             const rule = ruleFor[ins.insight_id]
+            const proposal = hasProposal(ins)
             return (
               <Card key={ins.insight_id} className="p-3">
                 <CardContent className="flex flex-col gap-2">
                   <div className="flex items-center justify-between gap-2">
-                    <Badge variant="secondary" className="text-[0.6rem] uppercase tracking-widest">
-                      pinned
-                    </Badge>
+                    <div className="flex gap-1.5 items-center">
+                      <Badge variant="secondary" className="text-[0.6rem] uppercase tracking-widest">
+                        pinned
+                      </Badge>
+                      {proposal ? (
+                        <Badge variant="default" className="text-[0.6rem] uppercase tracking-widest bg-amber-600 text-amber-50">
+                          proposal
+                        </Badge>
+                      ) : null}
+                    </div>
                     <span className="text-[0.65rem] text-muted-foreground">
                       {ins.created_at?.slice(0, 10) ?? ""}
                     </span>
                   </div>
-                  <div className="line-clamp-2 break-words font-mono text-xs text-foreground/90" title={ins.sql}>
-                    {ins.sql}
-                  </div>
+                  {proposal ? (
+                    <div className="flex flex-col gap-1">
+                      <div className="text-xs font-medium" title={ins.rule_title ?? undefined}>
+                        {ins.rule_title}
+                      </div>
+                      <div className="line-clamp-1 font-mono text-[0.65rem] text-foreground/70" title={ins.rule_where_clause ?? undefined}>
+                        {ins.rule_where_clause}
+                      </div>
+                      {ins.rule_rationale ? (
+                        <div className="line-clamp-2 text-[0.65rem] text-muted-foreground">{ins.rule_rationale}</div>
+                      ) : null}
+                    </div>
+                  ) : ins.sql ? (
+                    <div className="line-clamp-2 break-words font-mono text-xs text-foreground/90" title={ins.sql}>
+                      {ins.sql}
+                    </div>
+                  ) : null}
                   <div className="flex gap-1.5">
                     {!rule ? (
                       <Button size="xs" onClick={() => void draftRule(ins)} disabled={busy}>

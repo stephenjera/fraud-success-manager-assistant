@@ -66,10 +66,35 @@ class RejectsWrites(unittest.TestCase):
         self._assert_rejected("SELECT 1; DROP TABLE users")
 
 
+class PGCatalogPolicy(unittest.TestCase):
+    """P3.5 — pg_catalog is allowed by design (chaos report, by design section).
+
+    The reference_readonly role needs pg_catalog for catalog metadata
+    (schemas, roles, settings). No password or DSN columns are exposed."""
+
+    def test_pg_roles_allowed(self) -> None:
+        """Reading pg_roles is permitted — catalog metadata is safe."""
+        out = validate_sql("SELECT rolname FROM pg_roles")
+        self.assertIn("pg_roles", out)
+
+    def test_pg_settings_allowed(self) -> None:
+        """Reading pg_settings is permitted — non-secret settings are visible."""
+        out = validate_sql("SELECT name FROM pg_settings")
+        self.assertIn("pg_settings", out)
+
+    def test_current_user_allowed(self) -> None:
+        """current_user is a system function, not a catalog table."""
+        out = validate_sql("SELECT current_user")
+        self.assertIn("CURRENT_USER", out.upper())
+
+
 class PrimaryTable(unittest.TestCase):
     def test_first_table(self) -> None:
         """Returns the first table a SELECT reads from."""
-        self.assertEqual(primary_table("SELECT t.a FROM transactions t JOIN users u ON true"), "transactions")
+        self.assertEqual(
+            primary_table("SELECT t.a FROM transactions t JOIN users u ON true"),
+            "transactions",
+        )
 
     def test_no_table(self) -> None:
         """A literal SELECT has no table to attribute."""

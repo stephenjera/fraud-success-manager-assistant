@@ -38,7 +38,14 @@ class ApiError(Exception):
 
     __slots__ = ("code", "message", "details", "status")
 
-    def __init__(self, code: str, message: str, *, details: dict[str, Any] | None = None, status: int | None = None) -> None:
+    def __init__(
+        self,
+        code: str,
+        message: str,
+        *,
+        details: dict[str, Any] | None = None,
+        status: int | None = None,
+    ) -> None:
         self.code = code
         self.message = message
         self.details = details
@@ -46,7 +53,13 @@ class ApiError(Exception):
 
     def body(self) -> dict[str, Any]:
         """The contract's single error envelope."""
-        return {"error": {"code": self.code, "message": self.message, "details": self.details}}
+        return {
+            "error": {
+                "code": self.code,
+                "message": self.message,
+                "details": self.details,
+            }
+        }
 
 
 def not_found(message: str, *, details: dict[str, Any] | None = None) -> ApiError:
@@ -68,9 +81,25 @@ def register(app: FastAPI) -> None:
 
     @app.exception_handler(RequestValidationError)
     async def _validation(_: Request, exc: RequestValidationError) -> JSONResponse:
-        return JSONResponse(status_code=400, content=ApiError(INTERNAL_ERROR, "Invalid request body.", details={"errors": exc.errors()}).body())
+        return JSONResponse(
+            status_code=400,
+            content=ApiError(
+                INTERNAL_ERROR,
+                "Invalid request body.",
+                details={"errors": exc.errors()},
+            ).body(),
+        )
 
     @app.exception_handler(Exception)
     async def _internal(_: Request, exc: Exception) -> JSONResponse:
-        detail = exc.args[0] if exc.args and isinstance(exc.args[0], str) else type(exc).__name__
-        return JSONResponse(status_code=500, content=ApiError(INTERNAL_ERROR, "Unexpected server error.", details={"error": detail}).body())
+        detail = (
+            exc.args[0]
+            if exc.args and isinstance(exc.args[0], str)
+            else type(exc).__name__
+        )
+        return JSONResponse(
+            status_code=500,
+            content=ApiError(
+                INTERNAL_ERROR, "Unexpected server error.", details={"error": detail}
+            ).body(),
+        )

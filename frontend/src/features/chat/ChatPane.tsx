@@ -7,6 +7,26 @@ import { Badge } from "@/components/ui/badge"
 import { cn } from "@/lib/utils"
 import type { ActivityItem, Turn } from "@/lib/types"
 
+function ProposalCard({ turn }: { turn: Turn }) {
+  const p = turn.grounding?.rule_proposal
+  if (!p) return null
+  return (
+    <div className="mt-3 rounded-lg border border-amber-500/20 bg-amber-500/5 px-3 py-2.5 text-xs">
+      <div className="flex items-center gap-1.5">
+        <Badge variant="default" className="text-[0.6rem] uppercase tracking-widest bg-amber-600 text-amber-50">
+          rule proposal
+        </Badge>
+        <span className="font-medium">{p.title}</span>
+      </div>
+      <div className="mt-1 font-mono text-[0.65rem] text-foreground/70" title={p.where_clause}>{p.where_clause}</div>
+      {p.rationale ? <div className="mt-1.5 text-muted-foreground leading-relaxed">{p.rationale}</div> : null}
+      {p.assumptions?.length ? (
+        <div className="mt-1.5 text-muted-foreground">Assumes: {p.assumptions.join(", ")}</div>
+      ) : null}
+    </div>
+  )
+}
+
 function ActivityRow({ item }: { item: ActivityItem }) {
   return (
     <div className="flex items-start gap-2 text-xs leading-tight">
@@ -84,6 +104,7 @@ function TurnRow({ turn }: { turn: Turn }) {
             {turn.text}
           </div>
         ) : null}
+        <ProposalCard turn={turn} />
         {(turn.grounding?.flags ?? []).length > 0 ? (
           <div className="mt-3 flex flex-wrap gap-1.5">
             {(turn.grounding?.flags ?? []).map((f) => (

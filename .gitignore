@@ -40,3 +40,4 @@ backend/database/
 tmp/
 .playwright-mcp
 logs
+opencode.json

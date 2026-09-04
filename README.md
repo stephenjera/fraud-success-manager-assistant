@@ -4,24 +4,38 @@ An AI copilot for fraud analysts: natural-language exploration of transaction
 data, pattern validation, and rule drafting — ending in a backtested, fully
 provenanced SQL `WHERE` clause rule ready for a downstream rule engine.
 
-**Status:** P0 frozen. The design is complete — specs, ADRs, and all
-architecture docs are accepted and the P0 freeze has landed. The feature
-work (agents, API surface, rule lifecycle, eval suite) is the next phase.
-The spec is the source of truth for what comes next:
-[`docs/system-spec.md`](./docs/system-spec.md).
+**Status:** P0–P3 + P3.5 done. P4 (hardening & docs) in progress.
+The spec is the source of truth: [`docs/system-spec.md`](./docs/system-spec.md).
 
 The decision record lives in [`docs/decisions/`](./docs/decisions/)
-(ADR-0001 through ADR-0012). The detailed design docs live in
+(ADR-0001 through ADR-0016). The detailed design docs live in
 [`docs/architecture/`](./docs/architecture/). The UX frames live in
 [`docs/ux/wireframes.html`](./docs/ux/wireframes.html).
+
+## What's built
+
+| Phase | What shipped | Status |
+|-------|-------------|--------|
+| P0 | Spec, ADRs, architecture docs, API contract freeze | ✅ done |
+| P1 | LangGraph agent, NL→SQL, SSE streaming, core gates, wall test | ✅ done |
+| P2 | Rule lifecycle (draft→backtest→approve→deploy), state machine, mock engine | ✅ done |
+| P2.5 | Live-mode proof (real Ollama + real reference), bug fixes | ✅ done |
+| P3 | Three-pane frontend, chat/workspace/insights/catalog, wireframes | ✅ done |
+| P3.5 | Docker Compose at root, Dockerfiles, Playwright STREAM_LOST regression, pg_catalog test | ✅ done |
+| P4 | Makefile, mypy config, eval harness, missing test files, docs reconciliation | 🔄 in progress |
 
 ## Repository layout
 
 ```
 backend/    FastAPI + LangGraph backend (Python 3.12, uv)
-  app/      Application package (common/ infra; agents, services, … follow)
-  data/     Dev dataset (SQLite) + reference schema DDL
+  app/      Application package (common, agents, api, services, core)
+  tests/    pytest suite (wall, validator, flags, backtest math, rule state, rule engine, API, events)
+  eval/     Eval harness + golden fixtures
+  scripts/  e2e_walktalk.py, seed_reference.py, agent_repl.py, ask.py
+  db-init/  Idempotent Postgres init (roles, schemas)
 frontend/   React + TypeScript + Tailwind v4 + shadcn/ui (Vite)
+  e2e/      Playwright regression tests
+docs/       Spec, ADRs, architecture, phases, UX wireframes
 ```
 
 ## Quickstart
@@ -30,46 +44,64 @@ frontend/   React + TypeScript + Tailwind v4 + shadcn/ui (Vite)
 
 - [uv](https://docs.astral.sh/uv/) (Python 3.12 is pinned in `backend/.python-version`)
 - Node.js 20+
-- An LLM reachable per `backend/.env` (Ollama is the default provider)
+- Docker (for Postgres + pgadmin)
+- An LLM reachable per `.env` (Ollama is the default provider)
 
-### Backend
+### Option 1: Docker Compose (full stack)
 
 ```bash
-cd backend
-cp .env.example .env   # then fill in LLM_* / Langfuse values
-uv sync
-uv run python -m uvicorn app.main:app --reload --port 8000
+docker compose up -d
 ```
 
-- Health: `http://127.0.0.1:8000/api/health` (liveness),
-  `/api/health/ready` (LLM + Langfuse configuration state)
-- OpenAPI docs: `http://127.0.0.1:8000/docs`
+This starts Postgres, pgadmin, the API (with alembic + seed), and the frontend.
 
-### Frontend
+- Frontend: `http://127.0.0.1:5173`
+- API health: `http://127.0.0.1:8000/docs`
+- Pgadmin: `http://127.0.0.1:5050`
+
+### Option 2: Local dev
 
 ```bash
+# Start Postgres
+docker compose up -d db
+
+# Backend
+cd backend
+uv sync
+alembic upgrade head
+python scripts/seed_reference.py
+uv run python -m uvicorn app.main:app --reload --port 8000
+
+# Frontend
 cd frontend
 npm install
-npm run dev   # Vite dev server; /api is proxied to http://127.0.0.1:8000
+npm run dev
 ```
 
 ## Configuration
 
 All configuration is environment-driven via `pydantic-settings` (see
-`backend/app/common/settings.py` and `backend/.env.example`):
+`backend/app/common/settings.py`):
 
 | Variable | Purpose |
 |---|---|
-| `DB_PATH` | Path to the transaction SQLite database |
-| `LLM_PROVIDER` / `LLM_MODEL` | Provider (e.g. `ollama`, `openai`, `anthropic`) and bare model name |
+| `PG_DSN` / `REFERENCE_DSN` / `APPSTATE_DSN` | Postgres connections (one cluster, two roles) |
+| `LLM_PROVIDER` / `LLM_MODEL` | Provider (ollama, openai, anthropic) and model name |
 | `LLM_API_BASE` / `LLM_API_KEY` | Endpoint + key for hosted/local provider |
 | `ORIGINS` | CORS-allowed frontend origins (JSON list or comma-separated) |
 | `LANGFUSE_*` | Self-hosted Langfuse tracing (optional — degrades to no-op) |
 
+## Running checks
+
+```bash
+cd backend
+make lint    # ruff check + format --check + mypy
+make test    # pytest suite
+make eval    # deterministic eval subset (validator, flags, backtest math, rule state, rule engine, wall)
+```
+
 ## Deferred items
 
 Per spec §13, these are intentionally not built yet: auth/RBAC, real rule
-engine integration, post-deployment drift monitoring, feedback-loop
-learning. The v1 build also does not yet include the agent graph, rule
-lifecycle API, eval suite, CI pipeline, or full Docker Compose deployment —
-those are the next phases of implementation against the spec.
+engine integration, post-deployment drift monitoring, feedback-loop learning.
+CI pipeline is out of scope until a real deployment target exists (ADR-0012).

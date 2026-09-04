@@ -16,7 +16,7 @@ deployed (the LLM, the rule engine).
 |---|---|---|
 | `postgres` (compose) | `pgvector/pgvector:pg16`, one cluster, two roles inside (ADR-0007) | the only data store |
 | `pgadmin` (compose) | dev-only browser for the cluster | optional, never load-bearing — the SQL is in Alembic + the seed |
-| `api` (not a container) | the FastAPI app: `routers/` + `services/` + `agents/` + `core/` | runs from the local venv (see below) |
+| `api` (container) | the FastAPI app: `routers/` + `services/` + `agents/` + `core/` | runs as compose service (Dockerfile in `backend/`) |
 
 **The LLM is not a service.** Ollama is on-host (`LLM_API_BASE` in `.env`,
 currently `http://localhost:11434`). Provider is config, not a component:
@@ -29,19 +29,13 @@ the catalog of rules it would ship is exactly the `deployment_records`
 rows the FSM writes. (See `context.md` for the "inside the boundary"
 call.)
 
-## Why the `api` is not a compose service
+## Why the `api` is a compose service (P3.5)
 
-Local-first, deliberately. The loop is `uv sync` → `alembic upgrade
-head` → `uv run uvicorn --reload`. A compose `api` service would buy
-nothing at this stage (single local dev, no replicas, no network to
-worry about) and cost a Dockerfile (ADR-0012: no Dockerfile until it
-has a customer). The compose file's job is to bring *Postgres* up; the
-API talks to it over the loopback port. If a real deployment target
-ever shows up, the `api` service gets added then — the ADR-0012 skip
-line is already recorded.
-
-ADR-0012 already has the row that covers this (Terraform / real
-deployment targets); this compose decision rides on the same one.
+The `api` now runs as a compose service alongside `db` and `pgadmin`.
+The Dockerfile in `backend/Dockerfile` uses `uv sync` + `uvicorn`.
+For local dev, the traditional `uv sync` → `uvicorn --reload` loop
+still works; the compose service is for `docker compose up` convenience
+and P4 hardening. The frontend also has a container (see below).
 
 ## Ports & volumes
 
@@ -50,13 +44,14 @@ deployment targets); this compose decision rides on the same one.
 | `5433` host → `5432` container | compose `postgres` | host `5432` is already used by a separate local Postgres (the dev note in `backend/.env`); container stays canonical at `5432` |
 | `5050` → `80` | compose `pgadmin` | dev-only; the number is not a decision |
 | `11434` | Ollama, on-host | `LLM_API_BASE` in `backend/.env` |
-| `8000` | `api`, local venv | `backend/README.md`'s `uvicorn --port 8000`; never a port in compose because the API is not a container |
+| `8000` | `api`, local venv or compose | `uvicorn --port 8000`; compose maps `8000` |
+| `5173` (host) or `80` (container) | `frontend` | Vite dev on `5173`; compose container on `80` via nginx |
 
 Volumes:
 
-- **`./database` → `/var/lib/postgresql/data`** (named local path).
+- **`database`** (named volume) → `/var/lib/postgresql/data`.
   Survives `docker compose down`, wiped with `down -v`.
-- **`./db-init` → `/docker-entrypoint-initdb.d`** (ADR-0015): the
+- **`./backend/db-init` → `/docker-entrypoint-initdb.d`** (ADR-0015): the
   *bootstrap* path — role and schema DDL only (`001-roles.sql`,
   `002-schemas.sql`), idempotent. The ADR-0008 concern (init scripts
   silently no-op on a repeat init) is neutralised by idempotency;
@@ -69,14 +64,21 @@ through, not mounted.
 ## Boot order (the only ordering that matters)
 
 ```
-1. docker compose up -d postgres         # wait for healthy
-                                          #    entrypoint runs db-init/001-roles.sql + 002-schemas.sql
-                                          #    (idempotent — the fresh-volume bootstrap path, ADR-0015)
-2. alembic upgrade head                  # appstate tables only, runs as app_rw (non-superuser)
-                                          #    + checkpoints table (via the PostgresSaver.setup on first use)
-3. python scripts/seed_reference.py      # TRUNCATE + COPY, idempotent, superuser (ADR-0008)
-                                          #    + GRANT SELECT on all reference tables to reference_readonly
-4. uv run python -m uvicorn app.main:app --reload --port 8000
+1. docker compose up -d                 # db, pgadmin, api, frontend all start
+                                           #    entrypoint runs db-init/001-roles.sql + 002-schemas.sql
+                                           #    (idempotent — the fresh-volume bootstrap path, ADR-0015)
+2. # alembic + seed + uvicorn is handled by the api container's command
+```
+
+Local dev (no containers):
+
+```
+1. docker compose up -d db              # just Postgres
+2. cd backend && alembic upgrade head   # appstate tables only, runs as app_rw (non-superuser)
+3. cd backend && python scripts/seed_reference.py  # TRUNCATE + COPY, idempotent, superuser (ADR-0008)
+                                           #    + GRANT SELECT on all reference tables to reference_readonly
+4. cd backend && uv run python -m uvicorn app.main:app --reload --port 8000
+5. cd frontend && npm run dev           # Vite dev server on :5173, proxies /api to :8000
 ```
 
 Order is load-bearing: step 1 creates the `app_rw` role and the `reference` schema,
@@ -115,7 +117,7 @@ running.**
 | CI pipeline | ADR-0012 skip row; no runner until there's a customer |
 | Terraform / real deployment target | ADR-0008 consequences; the "repro on a fresh cloud host" capability has no user in this project |
 | Multi-tenant postdeploy, WAF, rate-limit tiers | ADR-0012 skip row |
-| A `Dockerfile` for `api` | ADR-0012 skip row; single-local dev has no customer for this today |
+| Docker image registry / push | Still ADR-0012 — local containers only, no publish step |
 
 ## Depends on
 

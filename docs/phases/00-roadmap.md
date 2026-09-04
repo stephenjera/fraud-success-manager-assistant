@@ -1,8 +1,8 @@
 # Phases 00 — Roadmap
 
-**Status:** P0–P2 done (2026-09-03), P2.5 done (2026-09-03), P3 next.
+**Status:** P0–P4 + P3.5 done (2026-09-04). P5 done. Prompt supervisor added 2026-09-04.
 
-Phases (order per the ADRs; P0–P2 done, P2.5 done, P3/P4 pending):
+Phases (order per the ADRs; P0–P4 done, P3.5 done, P5 done):
 
 - **P0 — Reckon & lock.** All ADRs frozen (`proposed` → `accepted`).
   Spec rewrites move to `docs/system-spec.md`. `architecture/*.md` stubs
@@ -33,9 +33,32 @@ Phases (order per the ADRs; P0–P2 done, P2.5 done, P3/P4 pending):
   See `../architecture/e2e-walktalk.md` (P2 addition) and the P2 addendum.
 - **P3 — Frontend.** The features from ADR-0009, built *against* the
   frozen API contract. The wireframes from `../ux/wireframes.md` are
-  the acceptance, not the description.
+  the acceptance, not the description. Chaos report completed: one real
+  bug (mid-stream SSE wedge) found and fixed.
+- **P3.5 — Frontend infra gaps.** Docker Compose moved to root with
+  `api` and `frontend` containers + Dockerfiles. Playwright STREAM_LOST
+  regression test. `sql_validator` pg_catalog policy unit test.
 - **P4 — Hardening & docs.** `make lint/test/eval` wired; README
-  reconciled to the real state; ADRs all accepted, none proposed.
+  reconciled; ADRs all accepted (0001–0016); missing P2 test files
+  (backtest_math, rule_engine, e2e_pattern_recovery); mypy config;
+  Python eval harness (replaces promptfoo concept).
+- **P5 — Conversational rule proposals + run-terminal robustness.**
+  The agent can propose rules in-chat without SQL
+  (`agents/output.py` `RuleProposal`, `Grounding.sql` nullable).
+  Recursion exhaustion (`GraphRecursionError`) → `RUN_TIMEOUT` (408);
+  model failure → `LLM_ERROR` (502).  Five terminal shapes ship:
+  grounded SQL, rule proposal, synthesis-from-prior, "data can't answer",
+  and plain chat (non-data questions answered conversationally, no SQL forced).
+  Prompt-level supervisor: system prompt (`graph.py:36`) branches — data
+  questions follow the `run_sql`/`profile_column`/`final_answer` flow;
+  non-data questions go straight to `final_answer` with prose only.
+  No second graph, no multi-agent split (ADR-0004 unchanged).
+  Pin action lives on insights rail (ADR-0009 boundary).
+  DB migration `0003` adds `rule_title`, `rule_where_clause`,
+  `rule_rationale`, `rule_assumptions` to `insights`.
+  `services/rules.draft_rule` prefers stored clause over derivation.
+  Frontend renders proposal cards in chat and highlights proposals on
+  the insights rail.  All five terminal types verified.
 
 Each phase ends with a *verifiable DoD*, not a mood. "The code compiles"
 is not a DoD. "The `test_architecture.py` wall check passes and

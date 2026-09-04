@@ -19,7 +19,7 @@ export interface WorkspacePaneProps {
 }
 
 function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProps) {
-  const [sql, setSql] = React.useState("")
+  const [sql, setSql] = React.useState<string | null>(null)
   const [results, setResults] = React.useState<QueryResult | null>(null)
   const [flags, setFlags] = React.useState<string[]>([])
   const [revisions, setRevisions] = React.useState<Revision[]>([])
@@ -53,12 +53,12 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
   )
 
   const execute = React.useCallback(async () => {
-    if (!conversationId || !selected || !sql.trim()) return
+    if (!conversationId || !selected || !sql?.trim()) return
     setRunning(true)
     setError(null)
     setPinned(false)
     try {
-      await materialize(conversationId, selected.message_id, sql)
+      await materialize(conversationId, selected.message_id, sql!)
     } catch (e) {
       setError(e instanceof ApiError ? `${e.code} — ${e.message}` : "Re-run failed.")
     } finally {
@@ -76,7 +76,7 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
     setPinned(false)
     setError(null)
     setResults(null)
-    if (conversationId) {
+    if (conversationId && selected.sql) {
       void materialize(conversationId, selected.message_id, selected.sql).catch(() =>
         // non-fatal — the SQL stays editable even if loading rows fails
         undefined,
@@ -85,11 +85,11 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selected?.message_id])
 
-  const canAct = Boolean(conversationId && selected && sql.trim())
-  const dirty = selected ? sql.trim() !== selected.sql.trim() : false
+  const canAct = Boolean(conversationId && selected && sql?.trim())
+  const dirty = selected ? (sql ?? "").trim() !== (selected.sql ?? "").trim() : false
 
   const pin = React.useCallback(async () => {
-    if (!canAct || !conversationId || !selected) return
+    if (!canAct || !conversationId || !selected || !sql) return
     setError(null)
     try {
       await workspaceApi.pinInsight(conversationId, {
@@ -129,7 +129,7 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
           </p>
         </div>
         {dirty ? (
-          <Button variant="ghost" size="xs" onClick={() => setSql(selected.sql)}>
+          <Button variant="ghost" size="xs" onClick={() => setSql(selected.sql ?? "")}>
             <RotateCcw aria-hidden /> Reset to agent query
           </Button>
         ) : null}
@@ -137,10 +137,10 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
 
       <div className="relative">
         <textarea
-          value={sql}
+          value={sql ?? ""}
           onChange={(e) => setSql(e.target.value)}
           spellCheck={false}
-          rows={Math.min(9, Math.max(3, sql.split("\n").length + 1))}
+          rows={Math.min(9, Math.max(3, (sql ?? "").split("\n").length + 1))}
           className="w-full resize-y rounded-lg border border-input bg-background py-2.5 px-3 font-mono text-[0.8rem] leading-relaxed text-foreground/90 outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
           placeholder="SELECT …"
         />

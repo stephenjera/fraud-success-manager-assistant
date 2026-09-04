@@ -50,7 +50,11 @@ def get_model(**kwargs: Any) -> BaseChatModel:
         )
         raise ValueError(msg)
 
-    if provider in _API_KEY_PROVIDERS and not settings.llm_api_key and "api_key" not in kwargs:
+    if (
+        provider in _API_KEY_PROVIDERS
+        and not settings.llm_api_key
+        and "api_key" not in kwargs
+    ):
         msg = f"LLM_API_KEY is required for provider '{provider}'."
         raise ValueError(msg)
 

@@ -1,0 +1,2 @@
+# Golden pattern definitions for E2E pattern recovery.
+# Each YAML file defines synthetic rows to inject and threshold assertions.

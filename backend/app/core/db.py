@@ -14,8 +14,7 @@ import psycopg
 from psycopg import sql
 
 from app.common.settings import settings
-from app.core import flags
-from app.core import sql_validator
+from app.core import flags, sql_validator
 
 
 class SqlExecutionError(RuntimeError):
@@ -62,7 +61,9 @@ def run_readonly_query(sql_text: str) -> flags.Result:
         raise SqlExecutionError(str(exc)) from exc
     finally:
         con.close()
-    return flags.Result(columns=cols, rows=rows, row_cap=flags.row_cap(), truncated=truncated)
+    return flags.Result(
+        columns=cols, rows=rows, row_cap=flags.row_cap(), truncated=truncated
+    )
 
 
 def count_rows(table: str) -> int | None:
@@ -79,7 +80,9 @@ def count_rows(table: str) -> int | None:
     con = _connect()
     try:
         with con.cursor() as cur:
-            cur.execute(sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table)))
+            cur.execute(
+                sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table))
+            )
             return int(cur.fetchone()[0])
     except Exception:  # noqa: BLE001 - unknown table is not a fatal flag-input
         return None

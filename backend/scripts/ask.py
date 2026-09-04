@@ -34,7 +34,9 @@ def log(message: str = "") -> None:
     print(line, flush=True)
 
 
-def call(method: str, path: str, body: dict | None = None, timeout: int = 1800) -> tuple[int, object]:
+def call(
+    method: str, path: str, body: dict | None = None, timeout: int = 1800
+) -> tuple[int, object]:
     """Issue one HTTP call and log the request, status, timing, and full body."""
     url = f"{BASE}{path}"
     data = json.dumps(body).encode() if body is not None else None
@@ -55,7 +57,11 @@ def call(method: str, path: str, body: dict | None = None, timeout: int = 1800) 
     except json.JSONDecodeError:
         parsed = raw.decode(errors="replace")
     log(f"<<< {status} in {time.monotonic() - start:.1f}s")
-    pretty = json.dumps(parsed, indent=2, default=str) if isinstance(parsed, object) else str(parsed)
+    pretty = (
+        json.dumps(parsed, indent=2, default=str)
+        if isinstance(parsed, object)
+        else str(parsed)
+    )
     log("    " + "\n    ".join(pretty.splitlines()))
     return status, parsed
 

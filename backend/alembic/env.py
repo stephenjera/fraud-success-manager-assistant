@@ -13,9 +13,9 @@ from __future__ import annotations
 
 from logging.config import fileConfig
 
-from alembic import context
 from sqlalchemy import engine_from_config, pool
 
+from alembic import context
 from app.common.settings import settings
 
 # Alembic runs as app_rw (owns appstate), not the superuser.
@@ -24,7 +24,9 @@ from app.common.settings import settings
 # ``options=-csearch_path=appstate`` query would otherwise trip it. psycopg
 # parses the unencoded ``=`` identically.
 config = context.config
-_dsn = settings.appstate_dsn.replace("postgresql://", "postgresql+psycopg://", 1).replace("%3D", "=")
+_dsn = settings.appstate_dsn.replace(
+    "postgresql://", "postgresql+psycopg://", 1
+).replace("%3D", "=")
 config.set_main_option("sqlalchemy.url", _dsn)
 
 if config.config_file_name is not None:
@@ -33,7 +35,12 @@ if config.config_file_name is not None:
 
 def run_migrations_offline() -> None:
     url = config.get_main_option("sqlalchemy.url")
-    context.configure(url=url, literal_binds=True, dialect_opts={"paramstyle": "named"}, compare_type=True)
+    context.configure(
+        url=url,
+        literal_binds=True,
+        dialect_opts={"paramstyle": "named"},
+        compare_type=True,
+    )
     with context.begin_transaction():
         context.run_migrations()
 
@@ -45,7 +52,9 @@ def run_migrations_online() -> None:
         poolclass=pool.NullPool,
     )
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=None, compare_type=True)
+        context.configure(
+            connection=connection, target_metadata=None, compare_type=True
+        )
         with context.begin_transaction():
             context.run_migrations()
 

@@ -1,0 +1,3 @@
+# Golden NL→SQL fixtures
+# Each file: a question and the reference SQL the agent should produce.
+# Used by the Python eval harness (replaces promptfoo).

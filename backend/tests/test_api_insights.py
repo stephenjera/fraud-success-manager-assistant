@@ -22,10 +22,20 @@ PINS = "SELECT COUNT(*) FROM transactions WHERE amount_usd_cents > 100000"
 def _pin_client(client) -> tuple[str, str, str]:
     """Drive the explore loop to a grounded message and pin it. Returns (cid, mid, revision_id)."""
     cid = client.post("/v1/conversations").json()["conversation_id"]
-    mid = client.post(f"/v1/conversations/{cid}/messages", json={"text": "How many large transactions?"}).json()["message_id"]
-    wait_until(lambda: client.get(f"/v1/conversations/{cid}/messages/{mid}").json()["status"] in ("success", "error"))
+    mid = client.post(
+        f"/v1/conversations/{cid}/messages",
+        json={"text": "How many large transactions?"},
+    ).json()["message_id"]
+    wait_until(
+        lambda: (
+            client.get(f"/v1/conversations/{cid}/messages/{mid}").json()["status"]
+            in ("success", "error")
+        )
+    )
     detail = client.get(f"/v1/conversations/{cid}/messages/{mid}").json()
-    revision_id = detail["revisions"][0]  # the message detail lists revision ids (strings)
+    revision_id = detail["revisions"][
+        0
+    ]  # the message detail lists revision ids (strings)
     return cid, mid, revision_id
 
 
@@ -34,7 +44,12 @@ def _pin(client) -> tuple[str, str]:
     cid, mid, revision_id = _pin_client(client)
     r = client.post(
         f"/v1/conversations/{cid}/insights",
-        json={"message_id": mid, "revision_id": revision_id, "sql": PINS, "explanation": "Large-card spend."},
+        json={
+            "message_id": mid,
+            "revision_id": revision_id,
+            "sql": PINS,
+            "explanation": "Large-card spend.",
+        },
     )
     assert r.status_code == 201, r.text
     return cid, r.json()["insight_id"]
@@ -92,7 +107,9 @@ class TestInsightCrud:
     def test_patch_edits_sql_and_explanation(self, client, db_ok):
         _, iid = _pin(client)
         new_sql = "SELECT COUNT(*) FROM transactions WHERE amount > 5000"
-        r = client.patch(f"/v1/insights/{iid}", json={"sql": new_sql, "explanation": "Bigger cards."})
+        r = client.patch(
+            f"/v1/insights/{iid}", json={"sql": new_sql, "explanation": "Bigger cards."}
+        )
         assert r.status_code == 200
         body = r.json()
         assert body["sql"] == new_sql and body["explanation"] == "Bigger cards."

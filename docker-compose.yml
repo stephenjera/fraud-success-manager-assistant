@@ -1,0 +1,86 @@
+services:
+  db:
+    container_name: fsm-postgres
+    image: pgvector/pgvector:pg16
+    ports:
+      # Host 5433 maps to container 5432 to prevent conflict with local Postgres
+      - "5433:5432"
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PW:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-fraud}
+      POSTGRES_INITDB_ARGS: ${POSTGRES_INITDB_ARGS}
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER:-postgres} -d $${POSTGRES_DB:-fraud}"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    logging:
+      options:
+        max-size: 10m
+        max-file: "3"
+    volumes:
+      - fsm_postgres_data:/var/lib/postgresql/data
+      - ./backend/db-init:/docker-entrypoint-initdb.d
+
+  pgadmin:
+    container_name: fsm-pgadmin
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=${PGADMIN_MAIL:-admin@admin.com}
+      - PGADMIN_DEFAULT_PASSWORD=${PGADMIN_PW:-admin}
+    ports:
+      - "5050:80"
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend/servers.json:/pgadmin4/servers.json
+
+  api:
+    container_name: fsm-api
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    ports:
+      - "8000:8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      - PG_DSN=postgresql://postgres:postgres@db:5432/fraud
+      - REFERENCE_DSN=postgresql://reference_readonly:reference_readonly@db:5432/fraud?options=-csearch_path%3Dreference
+      - APPSTATE_DSN=postgresql://app_rw:app_rw@db:5432/fraud?options=-csearch_path%3Dappstate
+      - LLM_API_BASE=http://host.docker.internal:11434
+      - PYTHONPATH=/app
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - ./backend:/app
+      - /app/.venv
+    command: >
+      sh -c "
+        cd /app &&
+        uv sync &&
+        uv run alembic upgrade head &&
+        uv run python scripts/seed_reference.py &&
+        uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+      "
+
+  frontend:
+    container_name: fsm-frontend
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    ports:
+      - "5173:80"
+    depends_on:
+      - api
+    environment:
+      - API_URL=http://api:8000
+
+volumes:
+  fsm_postgres_data:
+    name: fsm_postgres_data  # Appears with this exact label under Docker Desktop -> Volumes

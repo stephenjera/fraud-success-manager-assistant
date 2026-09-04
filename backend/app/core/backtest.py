@@ -34,8 +34,6 @@ ADR-0005 wall is the running test in ``tests/test_architecture.py``.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
-from decimal import Decimal
 from typing import Any
 
 import psycopg
@@ -43,7 +41,6 @@ from psycopg import sql
 
 from app.core import db
 from app.core import rules as rule_rules
-
 
 # The ADR-0014 basis. Column aliases (t, fl, c, m) are what the caller's
 # unqualified ``where_clause`` references resolve against.
@@ -65,8 +62,7 @@ _CELLS_TEMPLATE = (
     "           THEN 1 ELSE 0 END) AS fp,"
     "  SUM(CASE WHEN NOT ({clause}) AND fl.is_fraud = 1 THEN 1 ELSE 0 END) AS fn,"
     "  SUM(CASE WHEN NOT ({clause}) AND (fl.is_fraud = 0 OR fl.transaction_id IS NULL) "
-    "           THEN 1 ELSE 0 END) AS tn "
-    + _BASIS_FROM
+    "           THEN 1 ELSE 0 END) AS tn " + _BASIS_FROM
 )
 
 
@@ -165,9 +161,15 @@ def _temporal(con: psycopg.Connection, clause: str) -> dict[str, dict[str, float
     """
     # The median's date: the row at offset FLOOR(total/2) in a
     # date-ordered scan of the *labeled* universe.
-    total = int(con.execute(
-        sql.SQL("SELECT COUNT(*) " + _BASIS_FROM + " WHERE fl.transaction_id IS NOT NULL")
-    ).fetchone()[0])
+    total = int(
+        con.execute(
+            sql.SQL(
+                "SELECT COUNT(*) "
+                + _BASIS_FROM
+                + " WHERE fl.transaction_id IS NOT NULL"
+            )
+        ).fetchone()[0]
+    )
     if not total:
         empty = {"precision": 0.0, "recall": 0.0}
         return {"earlier_slice": empty, "later_slice": empty}
@@ -175,8 +177,9 @@ def _temporal(con: psycopg.Connection, clause: str) -> dict[str, dict[str, float
     offset = total // 2
     median_date = con.execute(
         sql.SQL(
-            "SELECT t.date " + _BASIS_FROM +
-            " WHERE fl.transaction_id IS NOT NULL ORDER BY t.date LIMIT 1 OFFSET %s"
+            "SELECT t.date "
+            + _BASIS_FROM
+            + " WHERE fl.transaction_id IS NOT NULL ORDER BY t.date LIMIT 1 OFFSET %s"
         ),
         (offset,),
     ).fetchone()
@@ -192,7 +195,8 @@ def _temporal(con: psycopg.Connection, clause: str) -> dict[str, dict[str, float
             "  SUM(CASE WHEN ({clause}) AND (fl.is_fraud = 0 OR fl.transaction_id IS NULL) "
             "           THEN 1 ELSE 0 END) AS fp,"
             "  SUM(CASE WHEN NOT ({clause}) AND fl.is_fraud = 1 THEN 1 ELSE 0 END) AS fn "
-            + _BASIS_FROM + " WHERE fl.transaction_id IS NOT NULL AND t.date "
+            + _BASIS_FROM
+            + " WHERE fl.transaction_id IS NOT NULL AND t.date "
         ).format(clause=sql.SQL(clause)) + sql.SQL(op + " %s")
         tp, fp, fn = (int(x or 0) for x in con.execute(q, (bound,)).fetchone())
         precision = tp / (tp + fp) if (tp + fp) else 0.0
@@ -209,7 +213,8 @@ def _sample(con: psycopg.Connection, clause: str, limit: int = 5) -> dict[str, A
         "  t.amount_usd_cents / 100.0 AS amount_usd, "
         "  c.card_type, c.card_brand, "
         "  COALESCE(m.name, 'UNKNOWN') AS merchant_name "
-        + _BASIS_FROM + " WHERE ({clause}) ORDER BY t.id DESC LIMIT %s"
+        + _BASIS_FROM
+        + " WHERE ({clause}) ORDER BY t.id DESC LIMIT %s"
     ).format(clause=sql.SQL(clause))
     cur = con.execute(q, (limit,))
     cols = [d.name for d in (cur.description or [])]
@@ -219,8 +224,9 @@ def _sample(con: psycopg.Connection, clause: str, limit: int = 5) -> dict[str, A
 
 def _json_cell(value: Any) -> Any:
     """Make a row cell JSON-serialisable (Decimal → float, date/datetime → ISO)."""
-    from decimal import Decimal
     from datetime import date, datetime
+    from decimal import Decimal
+
     if isinstance(value, Decimal):
         return float(value)
     if isinstance(value, (datetime, date)):
@@ -256,11 +262,13 @@ def run(
     con = db._connect()  # noqa: SLF001 — reuse db's reference_readonly reader
     try:
         labeled_only = _cells(
-            con, canonical,
+            con,
+            canonical,
             where=sql.SQL(" WHERE fl.transaction_id IS NOT NULL"),
         )
         full_universe = _cells(
-            con, canonical,
+            con,
+            canonical,
             where=sql.SQL(""),
         )
         temporal = _temporal(con, canonical)

@@ -1,42 +1,38 @@
-# P4 — Hardening & docs — placeholder
+# P4 — Hardening & docs
 
-**Status:** placeholder. The last phase, the one that ships
-`make eval` with zero red assertions and a README that matches the code.
+**Status:** in progress (2026-09-04).
+
+The last phase. Ships `make eval` with zero red assertions and a README
+that matches the code.
 
 **DoD (verifiable):**
 
 1. **`make lint` / `make test` / `make eval` all green.** `make lint`
-   runs ruff + mypy (the toolchain is already pinned in
-   `backend/pyproject.toml`). `make test` runs the pytest suite.
-   `make eval` runs promptfoo + pytest and prints a summary. These are
-   *the* deliverables (spec §14) and they are runnable by hand, in the
-   repo, with no CI pipeline required (CI is explicitly out of scope per
-   ADR-0008 — the make targets *are* the CI-ready equivalents).
-2. **README is reconciled to the actual state.** The root `README.md`
-   currently says "V5 baseline, agents/skeleton exist, feature work not
-   started." By P4, that is false, and the README says what's actually
-   built: the agent, the core gates, the rule lifecycle, the eval suite,
-   the frontend. It points to `docs/system-spec.md` (the authoritative
-   spec, moved from the repo root per ADR-0010) and to
-   `docs/decisions/` (the "why" for every load-bearing choice).
-3. **The ADR tree is complete and consistent.** All ADRs are
-   `accepted` (P0's freeze). No ADR is in a `proposed` state past P0.
-   The cross-references (e.g. ADR-0001 → ADR-0007, ADR-0004 → ADR-0005)
-   resolve and the "Superseded by" path is ready for any future
-   revision — the mechanism exists even if no ADR is superseded, which
-   is the *good* outcome.
-4. **The wall test passes in CI-ready shape.** `tests/test_architecture.py`
-   (ADR-0005) is a plain pytest, in the repo, and will pass in a fresh
-   checkout with `uv sync` + `alembic upgrade head`. That's the whole
-   "make targets are CI-ready" claim, in one file.
-5. **The Postgres story is end-to-end.** From a clean `docker compose
-   up`, the operator has: one `postgres` (two roles, ADR-0007), the
-   `api` running against the `app_rw` role for state and the
-   `reference_readonly` role for data, the `seed_reference.py` script
-   (ADR-0008) loaded, `pgadmin` available but optional. No Langfuse in
-   the stack (ADR-0010 / spec §12) — the `api` no-ops if the
-   `LANGFUSE_*` env vars are absent.
+   runs ruff + mypy. `make test` runs the pytest suite.
+   `make eval` runs the deterministic eval subset (validator, flags,
+   backtest math, rule state, rule engine, wall test). The eval harness
+   is `backend/eval/harness.py` — a slim Python runner, not promptfoo
+   (promptfoo is a global npm tool, not repo-local). These are
+   *the* deliverables (spec §14) and are runnable by hand in the repo
+   with no CI pipeline required (ADR-0012).
+2. **README reconciled to actual state.** Names P0–P3 done, P4 in
+   progress. Describes what's built (agent, core gates, rule lifecycle,
+   frontend, eval suite). Points to `docs/system-spec.md` and
+   `docs/decisions/`.
+3. **ADR tree complete and consistent.** ADR-0001 through ADR-0016 all
+   `accepted`. ADR-0016 formally rejects PostgresSaver (the deferral
+   path from ADR-0013). All architecture docs updated to match
+   (agent-loop.md, components.md, data-model.md, deploy.md).
+4. **Wall test passes.** `tests/test_architecture.py` is a plain pytest,
+   in the repo, passes in a fresh checkout with `uv sync`.
+5. **Postgres story end-to-end.** Docker Compose at root spins up
+   `postgres` (two roles, ADR-0007), `api` (alembic + seed + uvicorn),
+   `frontend` (Vite → nginx), `pgadmin` (optional). No Langfuse in
+   the stack (ADR-0010 / spec §12).
 
 **What P4 explicitly does *not* do:** add features, add dependencies,
-add a CI pipeline (out of scope forever until a real deployment target
-exists — ADR-0008).
+add a CI pipeline (out of scope until a real deployment target
+exists — ADR-0012). Promptfoo LLM-evaluated suites (NL→SQL accuracy,
+explanation faithfulness, safety/refusal) are documented in
+`eval-design.md` but not wired — deferred until a judge model is
+available.

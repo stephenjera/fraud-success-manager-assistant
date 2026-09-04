@@ -10,8 +10,6 @@ from __future__ import annotations
 import json
 import re
 
-import pytest
-
 from conftest import wait_until
 
 UUID_RE = re.compile(r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$")
@@ -24,6 +22,7 @@ def _cid(client) -> str:
 
 
 # --- Meta (no DB) -----------------------------------------------------------
+
 
 class TestMeta:
     def test_version(self, client):
@@ -56,6 +55,7 @@ class TestMeta:
 
 
 # --- Conversations (DB) -----------------------------------------------------
+
 
 class TestConversations:
     def test_create(self, client, db_ok):
@@ -95,10 +95,14 @@ class TestConversations:
 
 # --- The explore loop: command -> durable fact -> stream --------------------
 
+
 class TestExploreLoop:
     def test_post_message_returns_command(self, client, db_ok):
         cid = _cid(client)
-        r = client.post(f"/v1/conversations/{cid}/messages", json={"text": "How many transactions are there?"})
+        r = client.post(
+            f"/v1/conversations/{cid}/messages",
+            json={"text": "How many transactions are there?"},
+        )
         assert r.status_code == 201
         body = r.json()
         assert body["status"] == "running"
@@ -108,11 +112,16 @@ class TestExploreLoop:
         cid = _cid(client)
         r = client.post(f"/v1/conversations/{cid}/messages", json={})
         assert r.status_code == 400
-        assert r.json()["error"]["code"] == "INTERNAL_ERROR"  # validation → the single 400 shape
+        assert (
+            r.json()["error"]["code"] == "INTERNAL_ERROR"
+        )  # validation → the single 400 shape
 
     def test_message_becomes_durable_success(self, client, db_ok):
         cid = _cid(client)
-        mid = client.post(f"/v1/conversations/{cid}/messages", json={"text": "How many transactions are there?"}).json()["message_id"]
+        mid = client.post(
+            f"/v1/conversations/{cid}/messages",
+            json={"text": "How many transactions are there?"},
+        ).json()["message_id"]
 
         def done():
             r = client.get(f"/v1/conversations/{cid}/messages/{mid}")
@@ -130,10 +139,19 @@ class TestExploreLoop:
 
     def test_message_appears_in_list(self, client, db_ok):
         cid = _cid(client)
-        mid = client.post(f"/v1/conversations/{cid}/messages", json={"text": "x"}).json()["message_id"]
-        wait_until(lambda: client.get(f"/v1/conversations/{cid}/messages/{mid}").json()["status"] in ("success", "error"))
+        mid = client.post(
+            f"/v1/conversations/{cid}/messages", json={"text": "x"}
+        ).json()["message_id"]
+        wait_until(
+            lambda: (
+                client.get(f"/v1/conversations/{cid}/messages/{mid}").json()["status"]
+                in ("success", "error")
+            )
+        )
         items = client.get(f"/v1/conversations/{cid}/messages").json()["items"]
-        assert any(item["message_id"] == mid and item["grounded"] is True for item in items)
+        assert any(
+            item["message_id"] == mid and item["grounded"] is True for item in items
+        )
 
     def test_get_message_missing_is_404(self, client, db_ok):
         cid = _cid(client)
@@ -144,6 +162,7 @@ class TestExploreLoop:
 
 
 # --- Runs: the durable object + the SSE stream ------------------------------
+
 
 class _SSE:
     """Parse a raw ``text/event-stream`` body into ``[(event, data-dict)]`` tuples."""
@@ -158,9 +177,9 @@ class _SSE:
             event, data = "message", ""
             for line in block.splitlines():
                 if line.startswith("event: "):
-                    event = line[len("event: "):]
+                    event = line[len("event: ") :]
                 elif line.startswith("data: "):
-                    data += line[len("data: "):]
+                    data += line[len("data: ") :]
             if data:
                 events.append((event, json.loads(data)))
         return events
@@ -169,8 +188,18 @@ class _SSE:
 class TestRuns:
     def _drive(self, client) -> tuple[str, str]:
         cid = _cid(client)
-        body = client.post(f"/v1/conversations/{cid}/messages", json={"text": "How many transactions are there?"}).json()
-        wait_until(lambda: client.get(f"/v1/conversations/{cid}/messages/{body['message_id']}").json()["status"] in ("success", "error"))
+        body = client.post(
+            f"/v1/conversations/{cid}/messages",
+            json={"text": "How many transactions are there?"},
+        ).json()
+        wait_until(
+            lambda: (
+                client.get(
+                    f"/v1/conversations/{cid}/messages/{body['message_id']}"
+                ).json()["status"]
+                in ("success", "error")
+            )
+        )
         return cid, body["run_id"]
 
     def test_get_run(self, client, db_ok):
@@ -178,7 +207,11 @@ class TestRuns:
         r = client.get(f"/v1/runs/{run_id}")
         assert r.status_code == 200
         body = r.json()
-        assert body["run_id"] == run_id and body["status"] == "success" and body["message_id"]
+        assert (
+            body["run_id"] == run_id
+            and body["status"] == "success"
+            and body["message_id"]
+        )
 
     def test_get_run_missing_is_404(self, client, db_ok):
         _, run_id = self._drive(client)
@@ -195,18 +228,33 @@ class TestRuns:
         events = _SSE.parse(r.text)
         names = [e for e, _ in events]
         assert names[0] == "run.start" and names[-1] == "run.done"
-        assert "tool_call.start" in names and "tool_call.done" in names and "message.delta" in names
-        assert names.index("tool_call.start") < names.index("tool_call.done")  # start precedes its done
-        assert "insight.suggested" not in names and "run.error" not in names  # not emitted on a clean run
-        assert names.count("run.start") == 1 and names.count("run.done") == 1  # exactly one each
+        assert (
+            "tool_call.start" in names
+            and "tool_call.done" in names
+            and "message.delta" in names
+        )
+        assert names.index("tool_call.start") < names.index(
+            "tool_call.done"
+        )  # start precedes its done
+        assert (
+            "insight.suggested" not in names and "run.error" not in names
+        )  # not emitted on a clean run
+        assert (
+            names.count("run.start") == 1 and names.count("run.done") == 1
+        )  # exactly one each
 
     def test_sse_payloads_are_typed(self, client, db_ok):
         _, run_id = self._drive(client)
-        events = dict((_e, _d) for _e, _d in _SSE.parse(client.get(f"/v1/runs/{run_id}/events").text))
+        events = dict(
+            (_e, _d)
+            for _e, _d in _SSE.parse(client.get(f"/v1/runs/{run_id}/events").text)
+        )
         assert events["run.start"]["run_id"] == run_id
         assert events["tool_call.done"]["tool"] == "run_sql"
         assert "1,159,966" in events["message.delta"]["delta"]
-        assert events["run.done"]["message_id"] and events["run.done"]["duration_ms"] >= 0
+        assert (
+            events["run.done"]["message_id"] and events["run.done"]["duration_ms"] >= 0
+        )
 
     def test_sse_missing_run_is_404(self, client, db_ok):
         missing = "00000000-0000-0000-0000-000000000000"
@@ -217,16 +265,27 @@ class TestRuns:
 
 # --- Rerun (Gap H): synchronous re-execute + the revisions history ----------
 
+
 class TestRerun:
     def _first_message(self, client) -> tuple[str, str]:
         cid = _cid(client)
-        mid = client.post(f"/v1/conversations/{cid}/messages", json={"text": "x"}).json()["message_id"]
-        wait_until(lambda: client.get(f"/v1/conversations/{cid}/messages/{mid}").json()["status"] in ("success", "error"))
+        mid = client.post(
+            f"/v1/conversations/{cid}/messages", json={"text": "x"}
+        ).json()["message_id"]
+        wait_until(
+            lambda: (
+                client.get(f"/v1/conversations/{cid}/messages/{mid}").json()["status"]
+                in ("success", "error")
+            )
+        )
         return cid, mid
 
     def test_rerun_valid_returns_result_and_revision(self, client, db_ok):
         cid, mid = self._first_message(client)
-        r = client.post(f"/v1/conversations/{cid}/messages/{mid}/rerun", json={"sql": "SELECT COUNT(*) FROM transactions"})
+        r = client.post(
+            f"/v1/conversations/{cid}/messages/{mid}/rerun",
+            json={"sql": "SELECT COUNT(*) FROM transactions"},
+        )
         assert r.status_code == 200
         body = r.json()
         assert body["message_id"] == mid
@@ -237,7 +296,10 @@ class TestRerun:
 
     def test_rerun_write_is_sql_rejected(self, client, db_ok):
         cid, mid = self._first_message(client)
-        r = client.post(f"/v1/conversations/{cid}/messages/{mid}/rerun", json={"sql": "DELETE FROM cards"})
+        r = client.post(
+            f"/v1/conversations/{cid}/messages/{mid}/rerun",
+            json={"sql": "DELETE FROM cards"},
+        )
         assert r.status_code == 400
         body = r.json()["error"]
         assert body["code"] == "SQL_REJECTED"
@@ -246,19 +308,29 @@ class TestRerun:
     def test_rerun_missing_message_is_404(self, client, db_ok):
         cid = _cid(client)
         missing = "00000000-0000-0000-0000-000000000000"
-        r = client.post(f"/v1/conversations/{cid}/messages/{missing}/rerun", json={"sql": "SELECT 1"})
+        r = client.post(
+            f"/v1/conversations/{cid}/messages/{missing}/rerun",
+            json={"sql": "SELECT 1"},
+        )
         assert r.status_code == 404
         assert r.json()["error"]["code"] == "STATE_NOT_FOUND"
 
     def test_revisions_lists_newest_first(self, client, db_ok):
         cid, mid = self._first_message(client)
-        client.post(f"/v1/conversations/{cid}/messages/{mid}/rerun", json={"sql": "SELECT 1"})
+        client.post(
+            f"/v1/conversations/{cid}/messages/{mid}/rerun", json={"sql": "SELECT 1"}
+        )
         r = client.get(f"/v1/conversations/{cid}/messages/{mid}/revisions")
         assert r.status_code == 200
         items = r.json()["items"]
         assert any(item["source"] == "rerun" for item in items)
         first = items[0]
-        assert "revision_id" in first and "sql_preview" in first and "source" in first and "created_at" in first
+        assert (
+            "revision_id" in first
+            and "sql_preview" in first
+            and "source" in first
+            and "created_at" in first
+        )
 
     def test_revisions_missing_message_is_404(self, client, db_ok):
         cid = _cid(client)

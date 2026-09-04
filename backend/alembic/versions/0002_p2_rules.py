@@ -40,7 +40,9 @@ def upgrade() -> None:
         "  created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
         ");"
     )
-    op.execute("CREATE INDEX IF NOT EXISTS insights_conv_ix ON appstate.insights (conversation_id);")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS insights_conv_ix ON appstate.insights (conversation_id);"
+    )
 
     # --- rules (the state machine: draft → backtested → approved → deployed | rejected) ---
     op.execute(
@@ -58,7 +60,9 @@ def upgrade() -> None:
         "  created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
         ");"
     )
-    op.execute("CREATE INDEX IF NOT EXISTS rules_insight_ix ON appstate.rules (source_insight_id);")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS rules_insight_ix ON appstate.rules (source_insight_id);"
+    )
 
     # --- backtest_results (one row per POST …/backtest; the freeze-line anchor) ---
     # ADR-0014: two self-contained universes. `labeled_only` and `full_universe`
@@ -79,7 +83,9 @@ def upgrade() -> None:
         "  created_at TIMESTAMPTZ NOT NULL DEFAULT now()"
         ");"
     )
-    op.execute("CREATE INDEX IF NOT EXISTS backtests_rule_ix ON appstate.backtest_results (rule_id);")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS backtests_rule_ix ON appstate.backtest_results (rule_id);"
+    )
 
     # --- deployment_records (the durable artifact of a mocked deploy) ---
     op.execute(
@@ -92,7 +98,9 @@ def upgrade() -> None:
         "  deployed_at TIMESTAMPTZ NOT NULL DEFAULT now()"
         ");"
     )
-    op.execute("CREATE INDEX IF NOT EXISTS deployments_rule_ix ON appstate.deployment_records (rule_id);")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS deployments_rule_ix ON appstate.deployment_records (rule_id);"
+    )
 
 
 def downgrade() -> None:

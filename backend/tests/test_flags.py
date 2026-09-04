@@ -11,7 +11,9 @@ import unittest
 from app.core import flags
 
 
-def _result(rows: list[list[object]], truncated: bool = False, cap: int = flags.row_cap()) -> flags.Result:
+def _result(
+    rows: list[list[object]], truncated: bool = False, cap: int = flags.row_cap()
+) -> flags.Result:
     return flags.Result(columns=["a"], rows=rows, row_cap=cap, truncated=truncated)
 
 
@@ -22,7 +24,9 @@ class FlagSet(unittest.TestCase):
 
     def test_row_cap_hit(self) -> None:
         """Truncated result → ``row_cap_hit``."""
-        self.assertIn("row_cap_hit", flags.run(_result([[1]] * flags.row_cap(), truncated=True)))
+        self.assertIn(
+            "row_cap_hit", flags.run(_result([[1]] * flags.row_cap(), truncated=True))
+        )
 
     def test_large_result(self) -> None:
         """A big fraction (>5%) of a large table → ``large_result``."""

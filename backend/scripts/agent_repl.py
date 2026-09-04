@@ -35,7 +35,6 @@ os.environ.setdefault("LLM_MODEL", os.environ.get("LIVE_MODEL", "qwen3.8:27b-128
 os.environ["LANGFUSE_PUBLIC_KEY"] = ""
 os.environ["LANGFUSE_SECRET_KEY"] = ""
 
-import time  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
 from app.common.settings import settings  # noqa: E402
@@ -54,9 +53,9 @@ def _sse(text: str) -> list[tuple[str, dict]]:
         event, data = "message", ""
         for line in block.splitlines():
             if line.startswith("event: "):
-                event = line[len("event: "):]
+                event = line[len("event: ") :]
             elif line.startswith("data: "):
-                data += line[len("data: "):]
+                data += line[len("data: ") :]
         if data:
             out.append((event, json.loads(data)))
     return out
@@ -100,8 +99,10 @@ def ask(text: str) -> None:
         elif name == "message.delta":
             print(f"  ## {str(data.get('delta', ''))[:1200]}")
         elif name == "run.done":
-            print(f"  == run.done  {data.get('tokens_in')} in / {data.get('tokens_out')} out  "
-                  f"{(data.get('duration_ms') or 0) / 1000:.1f}s")
+            print(
+                f"  == run.done  {data.get('tokens_in')} in / {data.get('tokens_out')} out  "
+                f"{(data.get('duration_ms') or 0) / 1000:.1f}s"
+            )
         elif name == "run.error":
             print(f"  !! run.error  {data.get('detail')}")
 
@@ -119,13 +120,17 @@ def ask(text: str) -> None:
         print(f"\n  REFUSED -- code  : {e.get('code')}")
         print(f"  message  : {e.get('message')}")
         print(f"  reason   : {(e.get('details') or {}).get('error')}")
-        print("  try      : a question about the reference tables above "
-              "(transactions, fraud_labels, cards, merchants, users, mcc_codes, "
-              "merchant_locations)")
+        print(
+            "  try      : a question about the reference tables above "
+            "(transactions, fraud_labels, cards, merchants, users, mcc_codes, "
+            "merchant_locations)"
+        )
 
 
-HELP = ("Type a question about the fraud dataset (e.g. 'How many high-value\n"
-        "transactions are there?'). Commands: :help, exit / quit / :q.")
+HELP = (
+    "Type a question about the fraud dataset (e.g. 'How many high-value\n"
+    "transactions are there?'). Commands: :help, exit / quit / :q."
+)
 
 
 def _reference_tables() -> list[str]:
@@ -148,7 +153,7 @@ def _reference_tables() -> list[str]:
 
 
 def main() -> int:
-    print("Fraud agent REPL -- live LLM ({}).".format(settings.llm_model))
+    print(f"Fraud agent REPL -- live LLM ({settings.llm_model}).")
     tables = _reference_tables()
     if tables:
         print("Answers questions you can ground in these tables:")

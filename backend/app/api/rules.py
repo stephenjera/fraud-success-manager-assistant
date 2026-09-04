@@ -17,7 +17,6 @@ from pydantic import BaseModel
 from app.api import envelope
 from app.services import rules
 
-
 router = APIRouter(prefix="/v1/rules", tags=["rules"])
 
 
@@ -74,6 +73,7 @@ def delete_rule(rule_id: str) -> Response:
 # Backtest (the command, never the agent)
 # ---------------------------------------------------------------------------
 
+
 @router.post("/{rule_id}/backtest", status_code=201)
 def backtest(rule_id: str, body: BacktestIn | None = None) -> dict[str, Any]:
     """POST …/backtest — deterministic, never LLM (spec §7.4)."""
@@ -95,6 +95,7 @@ def get_backtest(rule_id: str, backtest_id: str) -> dict[str, Any]:
 # ---------------------------------------------------------------------------
 # Approve / reject / deploy / disable
 # ---------------------------------------------------------------------------
+
 
 @router.post("/{rule_id}/approve")
 def approve(rule_id: str, body: RationaleIn) -> dict[str, Any]:

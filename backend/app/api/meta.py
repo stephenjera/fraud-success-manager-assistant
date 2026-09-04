@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -14,7 +14,7 @@ from app.common.settings import settings
 
 router = APIRouter(tags=["meta"])
 
-_BUILT_AT: str = datetime.now(timezone.utc).isoformat()
+_BUILT_AT: str = datetime.now(UTC).isoformat()
 
 
 def _git_sha() -> str:
@@ -49,7 +49,11 @@ def ready() -> dict[str, Any]:
     db_ok = bool(settings.reference_dsn and settings.appstate_dsn)
     return {
         "ready": bool(settings.llm_model) and db_ok,
-        "llm": {"configured": bool(settings.llm_model), "provider": settings.llm_provider, "model": settings.llm_model},
+        "llm": {
+            "configured": bool(settings.llm_model),
+            "provider": settings.llm_provider,
+            "model": settings.llm_model,
+        },
         "db": {"configured": db_ok},
         "langfuse": {"configured": observability.is_configured()},
     }
@@ -71,5 +75,7 @@ def schema() -> dict[str, Any]:
         con.close()
     tables: dict[str, list[dict[str, Any]]] = {}
     for t, c, d, null in cols:
-        tables.setdefault(t, []).append({"column": c, "data_type": d, "nullable": null == "YES"})
+        tables.setdefault(t, []).append(
+            {"column": c, "data_type": d, "nullable": null == "YES"}
+        )
     return {"dialect": "postgres", "schema": "reference", "tables": tables}

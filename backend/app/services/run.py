@@ -8,6 +8,9 @@ worker thread (``run(...)/asyncio.to_thread`` inside the API); this module only
 emits events onto the in-process bus and writes the terminal row exactly once.
 The durable answer is the stored fact; the stream is only the view of it
 (a dropped stream never loses the answer — ADR-0011).
+
+P5: recursion exhaustion (GraphRecursionError) → RUN_TIMEOUT (408).
+Other exceptions → LLM_ERROR (502). Structured logging via ``common/logger``.
 """
 
 from __future__ import annotations
@@ -18,8 +21,11 @@ from typing import Any
 
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.messages import HumanMessage
+from langgraph.errors import GraphRecursionError
 
 from app.agents.graph import create_graph
+from app.api.errors import INTERNAL_ERROR, LLM_ERROR, RUN_TIMEOUT
+from app.common.logger import get_logger
 from app.common.observability import get_tracing_callbacks
 from app.common.settings import settings
 from app.services import events, store
@@ -41,7 +47,9 @@ class _EventEmitter(BaseCallbackHandler):
         self.run_id = run_id
         self._pending: dict[Any, str] = {}
 
-    def on_tool_start(self, serialized: dict[str, Any], input_str: str, *, run_id: Any, **kw: Any) -> Any:
+    def on_tool_start(
+        self, serialized: dict[str, Any], input_str: str, *, run_id: Any, **kw: Any
+    ) -> Any:
         name = (serialized or {}).get("name") or "run_sql"
         self._pending[run_id] = name
         try:
@@ -53,7 +61,9 @@ class _EventEmitter(BaseCallbackHandler):
     def on_tool_end(self, output: Any, *, run_id: Any, **kw: Any) -> Any:
         name = self._pending.pop(run_id, "run_sql")
         text = output if isinstance(output, str) else str(output)
-        events.push(self.run_id, "tool_call.done", {"tool": name, "result_summary": text[:200]})
+        events.push(
+            self.run_id, "tool_call.done", {"tool": name, "result_summary": text[:200]}
+        )
 
 
 def _tokens(messages: list[Any] | None) -> tuple[int, int]:
@@ -61,7 +71,9 @@ def _tokens(messages: list[Any] | None) -> tuple[int, int]:
     for m in reversed(messages or []):
         usage = getattr(m, "usage_metadata", None)
         if usage:
-            return int(usage.get("input_tokens", 0) or 0), int(usage.get("output_tokens", 0) or 0)
+            return int(usage.get("input_tokens", 0) or 0), int(
+                usage.get("output_tokens", 0) or 0
+            )
     return 0, 0
 
 
@@ -71,9 +83,15 @@ def execute(conversation_id: str, message_id: str, run_id: str, text: str) -> No
     Called on a worker thread. Never raises — a failure is a *result*
     (``run.error`` + a ``status='error'`` row), not a crash.
     """
+    log = get_logger("run")
+    log.info("run.start %s model=%s", run_id, settings.llm_model)
     events.ensure(run_id)
     start = time.monotonic()
-    events.push(run_id, "run.start", {"run_id": run_id, "model": settings.llm_model, "schema_version": "1"})
+    events.push(
+        run_id,
+        "run.start",
+        {"run_id": run_id, "model": settings.llm_model, "schema_version": "1"},
+    )
     emitter = _EventEmitter(run_id)
     config: dict[str, Any] = {
         "recursion_limit": 25,
@@ -82,23 +100,32 @@ def execute(conversation_id: str, message_id: str, run_id: str, text: str) -> No
     }
     try:
         result = _graph().invoke({"messages": [HumanMessage(content=text)]}, config)
+    except GraphRecursionError as exc:
+        log.error("run.graph_recursion %s: %s", run_id, exc)
+        _fail(run_id, message_id, start, code=RUN_TIMEOUT)
+        return
     except Exception as exc:  # noqa: BLE001 - a run failure is a result, not a crash
-        _fail(run_id, message_id, start, str(exc))
+        log.error("run.exception %s %s: %s", run_id, type(exc).__name__, exc)
+        _fail(run_id, message_id, start, code=LLM_ERROR)
         return
 
     grounding = result.get("grounding") if isinstance(result, dict) else None
     if not grounding:
-        _fail(run_id, message_id, start, "The agent did not produce a grounded answer.")
+        _fail(run_id, message_id, start, code=INTERNAL_ERROR)
         return
 
     events.push(run_id, "message.delta", {"delta": grounding.get("explanation", "")})
     tokens_in, tokens_out = _tokens(result.get("messages"))
-    events.push(run_id, "run.done", {
-        "message_id": message_id,
-        "duration_ms": int((time.monotonic() - start) * 1000),
-        "tokens_in": tokens_in,
-        "tokens_out": tokens_out,
-    })
+    events.push(
+        run_id,
+        "run.done",
+        {
+            "message_id": message_id,
+            "duration_ms": int((time.monotonic() - start) * 1000),
+            "tokens_in": tokens_in,
+            "tokens_out": tokens_out,
+        },
+    )
     events.mark_terminal(run_id)
     store.set_result(
         run_id,
@@ -108,16 +135,19 @@ def execute(conversation_id: str, message_id: str, run_id: str, text: str) -> No
         grounding=grounding,
         error=None,
         sql=grounding.get("sql"),
-        sql_preview=store.revision_preview(grounding.get("sql", "")),
+        sql_preview=store.revision_preview(grounding.get("sql") or ""),
     )
 
 
-def _fail(run_id: str, message_id: str, start: float, detail: str) -> None:
-    events.push(run_id, "run.error", {
-        "code": "LLM_ERROR",
-        "message": "The agent turn failed.",
-        "details": {"error": detail},
-    })
+def _fail(run_id: str, message_id: str, start: float, *, code: str = LLM_ERROR) -> None:
+    events.push(
+        run_id,
+        "run.error",
+        {
+            "code": code,
+            "message": "The agent turn failed.",
+        },
+    )
     events.mark_terminal(run_id)
     store.set_result(
         run_id,
@@ -125,7 +155,7 @@ def _fail(run_id: str, message_id: str, start: float, detail: str) -> None:
         success=False,
         status="error",
         grounding=None,
-        error={"code": "LLM_ERROR", "message": "The agent turn failed.", "details": {"error": detail}},
+        error={"code": code, "message": "The agent turn failed."},
         sql=None,
         sql_preview="",
     )

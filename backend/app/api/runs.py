@@ -8,7 +8,8 @@ re-fetched via the message DTO (the durable fact), never the stream.
 
 from __future__ import annotations
 
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
@@ -38,7 +39,11 @@ async def run_events(run_id: str, request: Request) -> StreamingResponse:
     return StreamingResponse(
         _sse(run_id, last_int),
         media_type="text/event-stream",
-        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "Connection": "keep-alive"},
+        headers={
+            "Cache-Control": "no-cache",
+            "X-Accel-Buffering": "no",
+            "Connection": "keep-alive",
+        },
     )
 
 

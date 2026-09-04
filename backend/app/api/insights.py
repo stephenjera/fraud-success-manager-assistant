@@ -15,7 +15,6 @@ from pydantic import BaseModel
 from app.api import envelope, errors
 from app.services import rules, store
 
-
 router = APIRouter(prefix="/v1", tags=["insights"])
 
 
@@ -26,6 +25,11 @@ class PinInsightBody(BaseModel):
     revision_id: str
     sql: str
     explanation: str | None = None
+    # P5: model-proposed rule fields (all optional, core/ validates clause).
+    rule_title: str | None = None
+    rule_where_clause: str | None = None
+    rule_rationale: str | None = None
+    rule_assumptions: list[str] | None = None
 
 
 class PatchInsightBody(BaseModel):
@@ -48,7 +52,7 @@ def _require_conversation(conversation_id: str) -> None:
 
 @router.post("/conversations/{conversation_id}/insights", status_code=201)
 def pin(conversation_id: str, body: PinInsightBody) -> dict[str, Any]:
-    """Create an insight — the pin (Gap B)."""
+    """Create an insight — the pin (Gap B, P5 rule fields passed through)."""
     _require_conversation(conversation_id)
     return rules.pin_insight(
         conversation_id=conversation_id,
@@ -56,6 +60,10 @@ def pin(conversation_id: str, body: PinInsightBody) -> dict[str, Any]:
         revision_id=body.revision_id,
         sql=body.sql,
         explanation=body.explanation,
+        rule_title=body.rule_title,
+        rule_where_clause=body.rule_where_clause,
+        rule_rationale=body.rule_rationale,
+        rule_assumptions=body.rule_assumptions,
     )
 
 
@@ -72,10 +80,14 @@ def get_insight(insight_id: str) -> dict[str, Any]:
     # The contract scopes insights to a conversation, but the detail
     # lookup is by id — resolve the owning conversation from the row,
     # then hand off to the service (which re-checks the scope).
-    row = rules._con().execute(  # noqa: SLF001 - a single row lookup for the id→scope shortcut
-        "SELECT conversation_id::text FROM insights WHERE id=%s",
-        (insight_id,),
-    ).fetchone()
+    row = (
+        rules._con()
+        .execute(  # noqa: SLF001 - a single row lookup for the id→scope shortcut
+            "SELECT conversation_id::text FROM insights WHERE id=%s",
+            (insight_id,),
+        )
+        .fetchone()
+    )
     if row is None:
         raise errors.not_found(f"Insight {insight_id!r} not found.")
     return rules.get_insight(row[0], insight_id)

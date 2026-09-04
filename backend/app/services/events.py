@@ -16,7 +16,8 @@ import asyncio
 import itertools
 import json
 from collections import deque
-from typing import Any, AsyncIterator
+from collections.abc import AsyncIterator
+from typing import Any
 
 _RING = 256  # events kept per run for Last-Event-ID replay
 
@@ -75,7 +76,9 @@ class _Bus:
     def unsubscribe(self, run_id: str, q: asyncio.Queue[Event | None]) -> None:
         self._waiters.get(run_id, set()).discard(q)
 
-    async def stream(self, run_id: str, last_event_id: int | None = None) -> AsyncIterator[Event]:
+    async def stream(
+        self, run_id: str, last_event_id: int | None = None
+    ) -> AsyncIterator[Event]:
         """Yield buffered events (after ``last_event_id``), then live, until terminal.
 
         A fresh subscriber that arrives mid-run still blocks for the remaining
@@ -87,7 +90,11 @@ class _Bus:
         """
         self.ensure(run_id)
         buf = self.buffer(run_id)
-        start = last_event_id if (last_event_id is not None and last_event_id < len(buf)) else 0
+        start = (
+            last_event_id
+            if (last_event_id is not None and last_event_id < len(buf))
+            else 0
+        )
         for ev in buf[start:]:
             yield ev
         if self.is_terminal(run_id):

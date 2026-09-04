@@ -45,7 +45,9 @@ def upgrade() -> None:
         "  finished_at TIMESTAMPTZ"
         ");"
     )
-    op.execute("CREATE INDEX IF NOT EXISTS runs_conv_ix ON appstate.runs (conversation_id);")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS runs_conv_ix ON appstate.runs (conversation_id);"
+    )
     op.execute(
         "CREATE TABLE appstate.messages ("
         "  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -57,8 +59,12 @@ def upgrade() -> None:
         "  error JSONB"
         ");"
     )
-    op.execute("CREATE INDEX IF NOT EXISTS messages_conv_ix ON appstate.messages (conversation_id);")
-    op.execute("CREATE INDEX IF NOT EXISTS messages_run_ix ON appstate.messages (run_id);")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS messages_conv_ix ON appstate.messages (conversation_id);"
+    )
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS messages_run_ix ON appstate.messages (run_id);"
+    )
     op.execute(
         "CREATE TABLE appstate.revisions ("
         "  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),"
@@ -72,7 +78,9 @@ def upgrade() -> None:
         "  UNIQUE (message_id, position)"
         ");"
     )
-    op.execute("CREATE INDEX IF NOT EXISTS revisions_msg_ix ON appstate.revisions (message_id);")
+    op.execute(
+        "CREATE INDEX IF NOT EXISTS revisions_msg_ix ON appstate.revisions (message_id);"
+    )
 
 
 def downgrade() -> None:

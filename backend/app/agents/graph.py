@@ -33,13 +33,20 @@ from app.core import db as core_db
 from app.core import flags as core_flags
 from app.core import sql_validator
 
-SYSTEM_PROMPT = """You are a fraud data analyst. Answer the analyst's question about this card-fraud dataset by inspecting the data directly.
+SYSTEM_PROMPT = """You are a fraud analyst assistant. You help a fraud success manager reason about a card-fraud dataset.
 
-Method (follow in order):
+First, decide whether the question is about the dataset or not.
+
+**If it's an analysis question about the data:**
 1. The reference tables and columns are below. Before writing a WHERE clause with a literal value you haven't seen yet, call profile_column — never invent values.
 2. Write ONE read-only SELECT in Postgres dialect. Use ``date_part('hour', date)`` and friends for date slices — the engine is PostgreSQL, not SQLite.
 3. Run it with run_sql. If rejected or errored, read the reason, fix, and retry (at most twice).
-4. Finish with a final answer: a plain-language explanation of what you found, your assumptions, and the tables-and-joins the SQL used.
+4. If the answer describes a detectable pattern that would make a good fraud detection rule (a filter you'd want to run continuously), include a ``rule_proposal`` in your ``final_answer`` with a title, a single WHERE-clause filter, why it matters, and assumptions.
+
+**If it's NOT about the dataset (general question, meta-question, or the data genuinely can't answer):**
+Submit your final answer directly — explain what you know, what you'd need to know, or why the data can't help. Do not force a query.
+
+In all cases, finish with ``final_answer``: a plain-language explanation, your assumptions, and the tables-and-joins the SQL used (if a query was run).
 
 Rules (non-negotiable):
 - Only reference tables and columns in the schema below. If the question cannot be answered, say so instead of guessing.
@@ -86,7 +93,11 @@ def run_sql(sql: str) -> str:
         result = core_db.run_readonly_query(sql)
     except (sql_validator.SqlRejected, core_db.SqlExecutionError) as exc:
         return json.dumps(
-            {"error": str(exc), "offending_sql": getattr(exc, "sql", None) or sql, "hint": "Fix the SQL and retry."}
+            {
+                "error": str(exc),
+                "offending_sql": getattr(exc, "sql", None) or sql,
+                "hint": "Fix the SQL and retry.",
+            }
         )
     total = core_db.count_rows(_primary_table(sql) or "")
     fl = core_flags.run(result, total_rows=total)
@@ -110,28 +121,51 @@ def profile_column(table: str, column: str) -> str:
     """
     if not (table and table.isidentifier()) or not (column and column.isidentifier()):
         return json.dumps(
-            {"error": "table and column must be plain identifiers (no dots, no SQL). Use table='cards', column='card_type'."}
+            {
+                "error": "table and column must be plain identifiers (no dots, no SQL). Use table='cards', column='card_type'."
+            }
         )
     from psycopg import sql as _sql
 
-    ref, tbl, col = _sql.Identifier("reference"), _sql.Identifier(table), _sql.Identifier(column)
+    ref, tbl, col = (
+        _sql.Identifier("reference"),
+        _sql.Identifier(table),
+        _sql.Identifier(column),
+    )
     con = psycopg.connect(settings.reference_dsn, autocommit=True)
     try:
         with con.cursor() as cur:
             cur.execute(_sql.SQL("SELECT COUNT(*) FROM {}.{}").format(ref, tbl))
             total = int(cur.fetchone()[0])
-            cur.execute(_sql.SQL("SELECT COUNT(*) FROM {}.{} WHERE {} IS NULL").format(ref, tbl, col))
+            cur.execute(
+                _sql.SQL("SELECT COUNT(*) FROM {}.{} WHERE {} IS NULL").format(
+                    ref, tbl, col
+                )
+            )
             nulls = int(cur.fetchone()[0])
-            cur.execute(_sql.SQL("SELECT COUNT(DISTINCT {}) FROM {}.{}").format(col, ref, tbl))
+            cur.execute(
+                _sql.SQL("SELECT COUNT(DISTINCT {}) FROM {}.{}").format(col, ref, tbl)
+            )
             distinct = int(cur.fetchone()[0])
-            cur.execute(_sql.SQL("SELECT {} FROM {}.{} ORDER BY {} LIMIT 5").format(col, ref, tbl, col))
+            cur.execute(
+                _sql.SQL("SELECT {} FROM {}.{} ORDER BY {} LIMIT 5").format(
+                    col, ref, tbl, col
+                )
+            )
             top = [r[0] for r in cur.fetchall()]
     except Exception as exc:  # noqa: BLE001 - return the error as JSON
         return json.dumps({"error": str(exc)})
     finally:
         con.close()
     return json.dumps(
-        {"table": table, "column": column, "total": total, "nulls": nulls, "distinct": distinct, "top": top},
+        {
+            "table": table,
+            "column": column,
+            "total": total,
+            "nulls": nulls,
+            "distinct": distinct,
+            "top": top,
+        },
         default=str,
     )
 
@@ -151,7 +185,7 @@ def _structured_output_node(state: Any) -> dict[str, Any]:
     last_sql: str | None = None
     last_flags: list[str] | None = None
     for m in messages:
-        for tc in (getattr(m, "tool_calls", None) or []):
+        for tc in getattr(m, "tool_calls", None) or []:
             if tc.get("name") == "run_sql":
                 last_sql = tc.get("args", {}).get("sql")
         if getattr(m, "type", None) == "tool" and getattr(m, "name", None) == "run_sql":
@@ -162,24 +196,22 @@ def _structured_output_node(state: Any) -> dict[str, Any]:
             except (ValueError, TypeError):
                 pass
     if not last_sql:
-        raise ValueError(
-            "The agent could not ground this question in the data — it "
-            "didn't call run_sql, so there is no SQL-based answer to build "
-            "from. It may be a question the dataset can't answer (e.g. "
-            "out-of-schema concepts), or the model chose not to run a "
-            "query. Try rephrasing in terms of the reference tables "
-            "listed below, or ask a different question."
-        )
+        # No fresh run_sql — the turn is a synthesis from prior results,
+        # or the data can't answer. This is a valid terminal (terminal shape d).
+        pass
 
     # --- Prose fields from the final_answer tool call ---
     final_args: dict[str, Any] = {}
     for m in reversed(messages):
-        for tc in (getattr(m, "tool_calls", None) or []):
+        for tc in getattr(m, "tool_calls", None) or []:
             if tc.get("name") == "final_answer":
                 final_args = tc.get("args", {}) or {}
                 break
         if final_args:
             break
+
+    rp_raw = final_args.get("rule_proposal")
+    rule_proposal = output.RuleProposal.model_validate(rp_raw) if rp_raw else None
 
     grounding = output.Grounding(
         sql=last_sql,
@@ -187,6 +219,7 @@ def _structured_output_node(state: Any) -> dict[str, Any]:
         assumptions=list(final_args.get("assumptions", []) or []),
         tables_and_joins_used=list(final_args.get("tables_and_joins_used", []) or []),
         flags=last_flags or [],
+        rule_proposal=rule_proposal,
     )
     return {"grounding": grounding.model_dump()}
 
@@ -210,7 +243,11 @@ final_answer = StructuredTool.from_function(
 def _tool_names(messages: list[Any]) -> set[str]:
     """Names of tool calls on the most recent assistant message, if any."""
     last = messages[-1]
-    return {tc.get("name") for tc in (getattr(last, "tool_calls", None) or []) if tc.get("name")}
+    return {
+        tc.get("name")
+        for tc in (getattr(last, "tool_calls", None) or [])
+        if tc.get("name")
+    }
 
 
 def _route(state: Any) -> str:
@@ -238,7 +275,12 @@ def _model_node(state: Any) -> dict[str, Any]:
     ]
     if _tool_names(state["messages"]) == set() and len(state["messages"]) > 1:
         # Previous turn returned prose with no tool call: nudge toward final_answer.
-        prompt.append({"role": "user", "content": "Call a tool: use final_answer to submit your grounded answer."})
+        prompt.append(
+            {
+                "role": "user",
+                "content": "Call final_answer to submit your answer — a grounded explanation, a rule proposal, or say the data can't answer.",
+            }
+        )
     return {"messages": [m.invoke(prompt)]}
 
 

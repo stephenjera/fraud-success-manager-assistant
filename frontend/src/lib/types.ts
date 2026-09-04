@@ -50,11 +50,19 @@ export interface Run {
 
 // ---- message (Gap A union: success | error | timeout)
 export interface Grounding {
-  sql: string
+  sql: string | null
   explanation: string
   assumptions: string[]
   tables_and_joins_used?: string[]
   flags?: string[]
+  rule_proposal?: RuleProposal | null
+}
+
+export interface RuleProposal {
+  title: string
+  where_clause: string
+  rationale: string
+  assumptions: string[]
 }
 
 export type MessageStatus = "running" | "success" | "error" | "timeout"
@@ -94,9 +102,13 @@ export interface Insight {
   insight_id: string
   message_id: string
   revision_id: string
-  sql: string
+  sql: string | null
   created_at: string
   rule_count: number
+  rule_title?: string | null
+  rule_where_clause?: string | null
+  rule_rationale?: string | null
+  rule_assumptions?: string[] | null
 }
 export interface InsightDetail extends Insight {
   explanation: string | null
@@ -259,7 +271,7 @@ export interface Turn {
 export interface SelectedQuery {
   message_id: string
   status: MessageStatus
-  sql: string
+  sql: string | null
   explanation: string | null
   assumptions: string[]
   flags: string[]

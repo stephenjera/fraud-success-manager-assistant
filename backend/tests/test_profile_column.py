@@ -33,7 +33,7 @@ class _FakeCursor:
     def __init__(self, rows: list[Any]) -> None:
         self._rows = list(rows)
 
-    def __enter__(self) -> "_FakeCursor":
+    def __enter__(self) -> _FakeCursor:
         return self
 
     def __exit__(self, *a: Any) -> None:
@@ -87,17 +87,31 @@ def test_null_is_null_count_not_inverted_total(monkeypatch: pytest.MonkeyPatch) 
     assert out["top"] == ["A", "B", "C"]
 
 
-def test_fully_populated_column_reports_zero_nulls(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_fully_populated_column_reports_zero_nulls(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     # The real regression case (2026-09-03): `cards.card_type` had 0 NULLs but
     # the buggy formula returned `nulls == total` (3437), hiding the values.
     # Pinned: a fully-populated column reports `nulls == 0`.
     monkeypatch.setattr(
         "app.agents.graph.psycopg.connect",
-        lambda *a, **kw: _FakeConn([(3437,), (0,), (3,), ("Credit",), ("Credit",), ("Credit",), ("Credit",), ("Credit",)]),
+        lambda *a, **kw: _FakeConn(
+            [
+                (3437,),
+                (0,),
+                (3,),
+                ("Credit",),
+                ("Credit",),
+                ("Credit",),
+                ("Credit",),
+                ("Credit",),
+            ]
+        ),
     )
     from app.agents.graph import profile_column
 
     out = json.loads(_tool(profile_column)("cards", "card_type"))
     assert out["total"] == 3437
-    assert out["nulls"] == 0, f"fully-populated column must report nulls==0, got {out['nulls']}"
-
+    assert out["nulls"] == 0, (
+        f"fully-populated column must report nulls==0, got {out['nulls']}"
+    )

@@ -13,7 +13,6 @@ against the reference data.
 from __future__ import annotations
 
 import re
-from typing import Any
 
 import sqlglot
 from sqlglot import exp
@@ -22,10 +21,17 @@ _DIALECT = "postgres"
 
 # The join basis ADR-0014 allows a rule to reference. Anything else is a
 # ``fraud_labels``/``merchants``-style table the FSM did not intend.
-_ALLOWED_TABLES = frozenset({
-    "transactions", "fraud_labels", "cards", "merchants", "users",
-    "mcc_codes", "merchant_locations",
-})
+_ALLOWED_TABLES = frozenset(
+    {
+        "transactions",
+        "fraud_labels",
+        "cards",
+        "merchants",
+        "users",
+        "mcc_codes",
+        "merchant_locations",
+    }
+)
 
 # AST node shapes a WHERE clause must not contain: subqueries and CTEs
 # would smuggle a second query past the "single expression" contract.
@@ -42,7 +48,9 @@ def _condition(sql_text: str) -> exp.Expression | None:
     if not text:
         return None
     try:
-        expr: exp.Expression = sqlglot.parse_one(text, read=_DIALECT, into=exp.Condition)
+        expr: exp.Expression = sqlglot.parse_one(
+            text, read=_DIALECT, into=exp.Condition
+        )
     except sqlglot.errors.ParseError:  # noqa: PERF203 - single guarded call
         return None
     return expr if expr is not None and not isinstance(expr, _FORBIDDEN_EXPR) else None
@@ -74,7 +82,9 @@ def derive_where_clause(pinned_sql: str) -> str:
 
 def table_names(sql_text: str) -> list[str]:
     """The tables a SQL fragment references (order-independent)."""
-    nodes = sqlglot.parse(sql_text, read=_DIALECT) or [sqlglot.maybe_parse(sql_text, read=_DIALECT)]
+    nodes = sqlglot.parse(sql_text, read=_DIALECT) or [
+        sqlglot.maybe_parse(sql_text, read=_DIALECT)
+    ]
     tables: list[str] = []
     for node in nodes:
         if node is None:
@@ -97,9 +107,13 @@ def assumptions_for(pinned_sql: str) -> list[str]:
         "Pinned from the query's revision; the clause is that query's own filter, verbatim.",
     ]
     if has_joins(pinned_sql):
-        assumptions.append("Cross-table joins preserved (cards, merchants, users reachable per ADR-0014).")
+        assumptions.append(
+            "Cross-table joins preserved (cards, merchants, users reachable per ADR-0014)."
+        )
     assessments = "1=1" if derive_where_clause(pinned_sql) == "1=1" else "explicit"
-    assumptions.append(f"Label coverage: the clause filters a {assessments} condition over the ADR-0014 basis.")
+    assumptions.append(
+        f"Label coverage: the clause filters a {assessments} condition over the ADR-0014 basis."
+    )
     return assumptions
 
 

@@ -63,13 +63,10 @@ Three channels, and nothing else. Langfuse is *not* a channel — it is `config`
 - `run_id` is **not** a state channel. It is assigned by `services/` before `invoke` (the run row is written in `appstate.runs` before the stream opens — ADR-0011: the command stores the state before opening the view). The graph does not own or mutate it.
 - **Langfuse** rides on `RunnableConfig.callbacks` + `config.metadata` (exactly as the current `agents.py:140` does), not a channel. A state channel that exists only to carry a callback handle would be a channel the graph has to thread but never reads — the `config` route is what LangChain/LangGraph give us for free.
 
-## Checkpointing (frozen 2026-09-02: **PostgresSaver from P1**)
+## Checkpointing (ADR-0016: **MemorySaver, PostgresSaver formally rejected**)
 
-- **Backend:** `PostgresSaver`, **from P1** — decided 2026-09-02 (the in-flight-resume fork; the other option, `InMemorySaver` until P2, was rejected). A finished answer is durable either way because `services/` writes `grounding` to `appstate.messages` before the stream closes. In-flight resume *after a reload* is what PostgresSavers for: the checkpoint table outlives the process, so `attach to a run in flight` (ADR-0011's claim) is true, not aspirational.
-- **Where:** the checkpoint tables (`checkpoints`, `checkpoint_blobs`, `checkpoint_writes`) live in **`appstate`, owned by `app_rw`**, created by the saver's `setup()` (Alembic-compatible — see `data-model.md`). They are **not** in `reference` — the agent's read path is `reference_readonly` (SELECT-only), and the saver *writes*, so it cannot coexist with that role.
-- **Who owns the connection:** `services/`. It constructs the compiled graph with a PostgresSaver built on an `app_rw` pool and passes the `thread_id` (the `run_id`) with each `invoke`. The graph does not open its own connection to the checkpointer; `services/` is the one that does. This is consistent with ADR-0005 ("the DB is reachable only via `core/` (reference) or `services/` (appstate)") — the *reasoning state* of the agent is app-state, written by the app, which is exactly the split ADR-0007 drew.
-- **Granularity:** a **node-boundary is the checkpoint boundary** (LangGraph's default: it snapshots at each superstep, which here is each node). There is no finer or coarser setting to choose at this altitude — the `messages` channel grows by one element per node, so the checkpoint after `model` and the one after `tools` are distinct snapshots, and replay between them is a property of those snapshots.
-- **Lifetime:** a run's checkpoint is kept (it is the durable record of the trace) until its conversation is deleted. No TTL, no expiry — the reference dataset is static and the checkpoint is small relative to it; an expiry policy would be a cost with no customer. `DELETE /v1/conversations/{id}` cascades to delete the checkpoint rows for its runs (that cascade is a `services/`-owned DB op, not a graph op).
+- **Backend:** `MemorySaver` (LangGraph default). ADR-0016 formally rejects `PostgresSaver` for this project: the durable state is `appstate`, not the checkpoint. `services/` writes `grounding` to `appstate.messages` before the stream closes. A client that lost its stream reconnects via `GET /v1/runs/{id}` + `GET /v1/conversations/{id}/messages/{mid}` — the durable row, not the checkpoint.
+- **Granularity:** in-memory only. A process restart loses the checkpoint, but the `appstate` row survives and is the record of the run. For this single-user, single-process reference implementation, `MemorySaver` is sufficient. The `langgraph-checkpoint-postgres` dependency remains in `pyproject.toml` if a future deployment needs it.
 
 ## Tool call, exactly where
 
@@ -77,7 +74,7 @@ The model does not "decide to call a tool" in a special slot. It emits a message
 
 1. `services/` seeds `messages` with the user turn, `invoke`s the compiled graph with `thread_id = run_id`.
 2. `model` runs → appends its message.
-3. If that message has `tool_calls`, the `tools` node runs, each tool call executing the `core/` path above, and the results are appended. Loop to (2). The `recursion_limit = 25` (existing, `agents.py:31`) is the step budget: hitting it raises, `services/` catches, writes `runs.status='error'` + `messages.status='error'`, emits `run.error`.
+3. If that message has `tool_calls`, the `tools` node runs, each tool call executing the `core/` path above, and the results are appended. Loop to (2). The `recursion_limit = 25` is the step budget: hitting it raises `GraphRecursionError`, `services/run.py` catches and writes the run as `error` with code `RUN_TIMEOUT` (408).  Other exceptions in the graph are caught and tagged `LLM_ERROR` (502), distinguishing recursion exhaustion from model/API failure.
 4. If the message has no `tool_calls`, `structured_output` runs: reads the transcript, assembles the ADR-0006 object (validating the model's three free fields against the schema; injecting the two fact fields), writes `grounding`, and the graph ends. `services/` persists `grounding` → `messages.grounding`, sets `runs.status='success'`, emits `run.done`.
 
 That ordering *is* the "when does a tool call happen relative to model output" answer: **not before, not after — the tool call is the model's next message.** There is no separate plan/act loop and no supervisor choosing tools; the condition for entering `tools` is a property of the model's output, and the wall is enforced inside the tool body, not at the graph edge.
@@ -88,15 +85,26 @@ That ordering *is* the "when does a tool call happen relative to model output" a
 
 ```
 grounding = {
-  sql:                    the last run_sql argument in `messages`      # fact, from the tool call
-  explanation:            the model's final answer, field-validated    # model-written
-  assumptions:            the model's final answer, field-validated    # model-written
-  tables_and_joins_used:  the model's final answer, field-validated    # model-written
-  flags:                  the `flags` field of the last run_sql result # fact, from core/flags
+  sql:                    the last run_sql argument in `messages` | null  # null when model takes no SQL tool call (P5)
+  explanation:            the model's final answer, field-validated       # model-written
+  assumptions:            the model's final answer, field-validated       # model-written
+  tables_and_joins_used:  the model's final answer, field-validated       # model-written
+  flags:                  the `flags` field of the last run_sql result    # fact, from core/flags, empty list when no SQL
+  rule_proposal:          {title, where_clause, rationale, assumptions} | null  # P5: model-proposed rule without SQL
 }
 ```
 
-If the model's three free fields do not validate against the ADR-0006 schema, `structured_output` writes `error` (not `grounding`), the run is `error` with code `LLM_ERROR` (one of the frozen error codes, `api-contract.md`), and `services/` persists `messages.error`. That is the specific case ADR-0006 exists to remove from the "the UI parses prose" failure mode — and it is a *typed* validation, not a hopeful parse.
+The system prompt has two paths: for data questions, the model follows the `run_sql`/`profile_column`/`final_answer` flow described above. For non-data questions (general knowledge, meta-questions, chat about the project), the model skips the tools entirely and calls `final_answer` directly with prose only — no SQL forced. This is a prompt-level supervisor decision (ADR-0004 is unchanged: still one agent), not a second graph or a multi-agent split. The prompt was updated 2026-09-04 to add this branching.
+
+The `Grounding.sql` column is nullable. There are five terminal shapes:
+
+1. **Grounded SQL** — the model ran `run_sql`, `grounding.sql` is populated, `rule_proposal` is null.
+2. **Rule proposal** — the model spotted a pattern but no question was asked. `sql` is null, `rule_proposal` is populated, its `where_clause` is validated by `core/rules.validate_where_clause` in `structured_output`.
+3. **Synthesis from prior turns** — the answer is in the conversation history. `sql` is null, `rule_proposal` is null, `grounding` is still populated with a text explanation. (Previously this would have been an error.)
+4. **Data can't answer** — the model returns a grounded explanation saying the dataset does not cover the question. `sql` is null, `grounding` is populated.
+5. **Chat answer** — the model recognizes a non-data question and replies conversationally. `sql` is null, `rule_proposal` is null, `explanation` carries the chat response. Same grounding shape as (4), different content.
+
+If the model's free fields do not validate against the ADR-0006 schema, `structured_output` writes `error` (not `grounding`), the run is `error` with code `LLM_ERROR` (one of the frozen error codes, `api-contract.md`), and `services/` persists `messages.error`. That is the specific case ADR-0006 exists to remove from the "the UI parses prose" failure mode — and it is a *typed* validation, not a hopeful parse.
 
 **Optional nudge:** `structured_output` may *additionally* emit an `insight_suggestion` (`{suggested: true, sql, headline_metric}`) — the material for the contract's non-blocking `insight.suggested` SSE event. It is a *nudge*, not a pin: the pin is the FSM's `POST /v1/insights` (Gap B, which requires the client to send the exact `revision_id` + `sql`). The model can suggest a turn is worth pinning, but it cannot pin it — that is spec principle 4/5 ("the FSM owns correction," "insights are the required bridge") held at the state level, not the prompt level.
 
@@ -124,7 +132,7 @@ That sentence is the contract between this graph, `core/` (the gates), `services
 
 ## What this doc is *not* deciding
 
-- **The prompt.** The system prompt (currently `agents.py:33`) will change with the schema move (SQLite→Postgres wording, the "profile a column before a literal" guidance), but its *content* is an `agents/` implementation detail and its *boundary* (it does not, and cannot, replace the gates) is fixed by ADR-0005.
+- **The prompt's content.** The system prompt (`graph.py:36`) branches on whether the question is about the data. Its content is an `agents/` implementation detail and its boundary (it does not, and cannot, replace the gates) is fixed by ADR-0005. The prompt was updated 2026-09-04 to handle non-data questions as a fifth terminal shape without adding a second graph.
 - **The model provider/wiring.** Ollama-by-default, swappable (spec §5) — that is `app/common/model.py` config, not this doc.
 - **The deterministic math** in `core/backtest.py` / `core/flags` / `core/rule_engine.py` — `rule-lifecycle.md`, `data-model.md`, and ADR-0005 own those; this doc only *calls* them through the tool body and never *implements* them.
 

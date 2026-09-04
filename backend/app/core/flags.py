@@ -13,7 +13,13 @@ class Result:
 
     __slots__ = ("columns", "rows", "row_cap", "truncated")
 
-    def __init__(self, columns: list[str], rows: list[list[object]], row_cap: int, truncated: bool) -> None:
+    def __init__(
+        self,
+        columns: list[str],
+        rows: list[list[object]],
+        row_cap: int,
+        truncated: bool,
+    ) -> None:
         """Store the columns, capped rows, cap, and whether more existed."""
         self.columns = columns
         self.rows = rows

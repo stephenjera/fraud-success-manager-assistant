@@ -20,9 +20,9 @@ import psycopg
 import pytest
 from fastapi.testclient import TestClient
 
-from app.main import create_app
 from app.common.settings import settings
 from app.core import flags
+from app.main import create_app
 
 # The fixed grounded answer every faked agent turn returns (ADR-0006 shape).
 FAKE_GROUNDING = {
@@ -43,13 +43,19 @@ class _FakeGraph:
     def invoke(self, state: dict, config: dict) -> dict:
         for handler in (config or {}).get("callbacks", []) or []:
             if hasattr(handler, "on_tool_start"):
-                handler.on_tool_start({"name": "run_sql"}, '{"sql": "SELECT COUNT(*) FROM transactions"}', run_id=_TOOL_RUN_ID)
+                handler.on_tool_start(
+                    {"name": "run_sql"},
+                    '{"sql": "SELECT COUNT(*) FROM transactions"}',
+                    run_id=_TOOL_RUN_ID,
+                )
                 handler.on_tool_end(_TOOL_OUT, run_id=_TOOL_RUN_ID)
         return {"messages": [], "grounding": dict(FAKE_GROUNDING)}
 
 
 def _fake_run_readonly_query(sql_text: str) -> flags.Result:
-    return flags.Result(columns=["total_transactions"], rows=[[1159966]], row_cap=100, truncated=False)
+    return flags.Result(
+        columns=["total_transactions"], rows=[[1159966]], row_cap=100, truncated=False
+    )
 
 
 @pytest.fixture(autouse=True)

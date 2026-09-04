@@ -23,12 +23,9 @@ dependencies = [
 
 [tool.ruff.lint]
 select = [
-    "ALL", # All rules
     "E",   # Pycodestyle errors
     "F",   # Pyflakes
     "I",   # Import sorting
-    "D",   # Docstring rules
-    "ANN", # Type annotation rules
     "B",   # Bugbear
     "UP",  # Pyupgrade
 ]
@@ -58,6 +55,15 @@ dev = [
     "pytest>=9.0.3",
     "ruff>=0.16.1",
 ]
+
+[tool.mypy]
+python_version = "3.12"
+warn_return_any = true
+warn_unused_configs = true
+disallow_untyped_defs = false
+ignore_missing_imports = true
+packages = ["app"]
+plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 # Only collect the real suite; `database/` (a non-owned, unreadable dir) is not

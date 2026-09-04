@@ -10,7 +10,6 @@ test walks every ``.py`` under ``app/core`` and fails if any of them imports
 from __future__ import annotations
 
 import ast
-import sys
 import unittest
 from pathlib import Path
 
@@ -34,7 +33,10 @@ def _imported_modules(tree: ast.AST) -> set[str]:
 
 def _reaches(mods: set[str], dotted: str) -> bool:
     """True if any imported name *is* or *is under* ``dotted`` (e.g. reaches ``app.core``)."""
-    return any(m == dotted or m.startswith(dotted + ".") or m == dotted.split(".", 1)[0] for m in mods)
+    return any(
+        m == dotted or m.startswith(dotted + ".") or m == dotted.split(".", 1)[0]
+        for m in mods
+    )
 
 
 class WallTest(unittest.TestCase):
@@ -48,11 +50,19 @@ class WallTest(unittest.TestCase):
         """No module under ``app/core`` may import the `agents` package."""
         offenders: list[str] = []
         for path in sorted(_CORE.rglob("*.py")):
-            mods = _imported_modules(ast.parse(path.read_text(encoding="utf-8"), filename=str(path)))
+            mods = _imported_modules(
+                ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+            )
             # core must never reach the agents package (top-level `agents` or `app.agents`).
-            if _reaches(mods, "app.agents") or {"agent", "agents"} & {m.split(".", 1)[0] for m in mods}:
-                offenders.append(f"{path.relative_to(_BACKEND)} reaches {sorted(m for m in mods if 'agent' in m)}")
-        self.assertEqual(offenders, [], "ADR-0005 wall broken:\n  " + "\n  ".join(offenders))
+            if _reaches(mods, "app.agents") or {"agent", "agents"} & {
+                m.split(".", 1)[0] for m in mods
+            }:
+                offenders.append(
+                    f"{path.relative_to(_BACKEND)} reaches {sorted(m for m in mods if 'agent' in m)}"
+                )
+        self.assertEqual(
+            offenders, [], "ADR-0005 wall broken:\n  " + "\n  ".join(offenders)
+        )
 
     def test_core_module_exists(self) -> None:
         """core/ has the four P1 gate files (sql_validator, flags, db)."""
@@ -66,10 +76,15 @@ class WallTest(unittest.TestCase):
         # At least one agent module references core (the gates live in core by design).
         hit = False
         for path in agents_dir.rglob("*.py"):
-            if _reaches(_imported_modules(ast.parse(path.read_text("utf-8"))), "app.core"):
+            if _reaches(
+                _imported_modules(ast.parse(path.read_text("utf-8"))), "app.core"
+            ):
                 hit = True
                 break
-        self.assertTrue(hit, "expected at least one app/agents module to import app.core (the gates)")
+        self.assertTrue(
+            hit,
+            "expected at least one app/agents module to import app.core (the gates)",
+        )
 
 
 if __name__ == "__main__":

@@ -42,14 +42,17 @@ def _con() -> psycopg.Connection:
 def create_conversation() -> tuple[str, datetime]:
     """Insert a conversation; return ``(id, created_at)``."""
     with _con() as con:
-        row = con.execute("INSERT INTO conversations DEFAULT VALUES RETURNING id::text, created_at").fetchone()
+        row = con.execute(
+            "INSERT INTO conversations DEFAULT VALUES RETURNING id::text, created_at"
+        ).fetchone()
     return row[0], row[1]
 
 
 def get_conversation(conversation_id: str) -> dict[str, Any] | None:
     with _con() as con:
         row = con.execute(
-            "SELECT id::text, created_at, last_active FROM conversations WHERE id=%s", (conversation_id,)
+            "SELECT id::text, created_at, last_active FROM conversations WHERE id=%s",
+            (conversation_id,),
         ).fetchone()
     if row is None:
         return None
@@ -100,12 +103,23 @@ def create_turn(conversation_id: str, text: str) -> tuple[str, str]:
         )
         message_id, created_at = cur.fetchone()
         # rev-1 = the agent's draft (written when the grounding lands, not now).
-        con.execute("UPDATE conversations SET last_active = %s WHERE id=%s", (created_at, conversation_id))
+        con.execute(
+            "UPDATE conversations SET last_active = %s WHERE id=%s",
+            (created_at, conversation_id),
+        )
     return run_id, message_id
 
 
-def set_result(run_id: str, message_id: str, success: bool, status: str, grounding: dict | None, error: dict | None,
-              sql: str | None, sql_preview: str) -> None:
+def set_result(
+    run_id: str,
+    message_id: str,
+    success: bool,
+    status: str,
+    grounding: dict | None,
+    error: dict | None,
+    sql: str | None,
+    sql_preview: str,
+) -> None:
     """Terminal write: message status + grounding/error; the agent revision (rev-1)."""
     with _con() as con:
         con.execute(
@@ -116,7 +130,12 @@ def set_result(run_id: str, message_id: str, success: bool, status: str, groundi
             con.execute(
                 "INSERT INTO revisions (message_id, position, source, sql, sql_preview, flags) "
                 "VALUES (%s, 1, 'agent', %s, %s, %s)",
-                (message_id, sql, sql_preview, _jsonb((grounding or {}).get("flags", []) if grounding else [])),
+                (
+                    message_id,
+                    sql,
+                    sql_preview,
+                    _jsonb((grounding or {}).get("flags", []) if grounding else []),
+                ),
             )
         con.execute(
             "UPDATE runs SET status=%s, finished_at=now(), message_id=%s WHERE id=%s",
@@ -124,13 +143,24 @@ def set_result(run_id: str, message_id: str, success: bool, status: str, groundi
         )
 
 
-def add_rerun(message_id: str, sql: str, sql_preview: str, result: dict[str, Any], flags: list[str]) -> str:
+def add_rerun(
+    message_id: str,
+    sql: str,
+    sql_preview: str,
+    result: dict[str, Any],
+    flags: list[str],
+) -> str:
     """A ``rerun`` revision (rev-N); return ``(message_id, revision_id)``-style id.
 
     Next ``position`` = existing max + 1 (rev-2, rev-3, …).
     """
     with _con() as con:
-        pos = int(con.execute("SELECT coalesce(max(position),0)+1 FROM revisions WHERE message_id=%s", (message_id,)).fetchone()[0])
+        pos = int(
+            con.execute(
+                "SELECT coalesce(max(position),0)+1 FROM revisions WHERE message_id=%s",
+                (message_id,),
+            ).fetchone()[0]
+        )
         row = con.execute(
             "INSERT INTO revisions (message_id, position, source, sql, sql_preview, flags) "
             "VALUES (%s, %s, 'rerun', %s, %s, %s) RETURNING id::text",
@@ -151,7 +181,8 @@ def get_message(conversation_id: str, message_id: str) -> MessageRow:
         if row is None:
             raise NotFound(message_id)
         revs = con.execute(
-            "SELECT id::text FROM revisions WHERE message_id=%s ORDER BY position DESC", (message_id,)
+            "SELECT id::text FROM revisions WHERE message_id=%s ORDER BY position DESC",
+            (message_id,),
         ).fetchall()
     return MessageRow(
         message_id=row[0],
@@ -173,7 +204,13 @@ def list_messages(conversation_id: str) -> list[dict[str, Any]]:
             (conversation_id,),
         ).fetchall()
     return [
-        {"message_id": r[0], "run_id": r[1], "status": r[2], "created_at": r[3], "grounded": bool(r[4])}
+        {
+            "message_id": r[0],
+            "run_id": r[1],
+            "status": r[2],
+            "created_at": r[3],
+            "grounded": bool(r[4]),
+        }
         for r in rows
     ]
 
@@ -203,7 +240,10 @@ def list_revisions(message_id: str) -> list[dict[str, Any]]:
             "SELECT id::text, created_at, sql_preview, source FROM revisions WHERE message_id=%s ORDER BY position DESC",
             (message_id,),
         ).fetchall()
-    return [{"revision_id": r[0], "created_at": r[1], "sql_preview": r[2], "source": r[3]} for r in rows]
+    return [
+        {"revision_id": r[0], "created_at": r[1], "sql_preview": r[2], "source": r[3]}
+        for r in rows
+    ]
 
 
 def latest_revision(message_id: str) -> dict[str, Any] | None:
@@ -216,7 +256,14 @@ def latest_revision(message_id: str) -> dict[str, Any] | None:
         ).fetchone()
     if row is None:
         return None
-    return {"revision_id": row[0], "position": row[1], "source": row[2], "sql": row[3], "sql_preview": row[4], "flags": row[5]}
+    return {
+        "revision_id": row[0],
+        "position": row[1],
+        "source": row[2],
+        "sql": row[3],
+        "sql_preview": row[4],
+        "flags": row[5],
+    }
 
 
 def _jsonb(value: Any) -> str | None:
