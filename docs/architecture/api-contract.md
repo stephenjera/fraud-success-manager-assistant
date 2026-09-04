@@ -98,9 +98,10 @@ because the `POST …/messages` command stored it before opening the stream.
 A dropped or closed stream does not lose the answer; the answer is a
 stored fact, and the stream is one (reconnectable) way to *see* it happen.
 
-The run is backed by the LangGraph checkpoint (ADR-0003) — the graph
-checkpoint *is* the run state, not a separate table the client has to
-sync.
+The run is backed by the run row in `appstate` — the `runs` row *is* the
+run state, not a separate table the client has to sync. No LangGraph
+checkpointer is used (ADR-0016); the graph is compiled bare and the
+service layer persists run state.
 
 **Scope note:** the split applies to *runs that have something to stream*
 — i.e. the agent turns. A *rerun* is not a run (Gap H, below): it is a

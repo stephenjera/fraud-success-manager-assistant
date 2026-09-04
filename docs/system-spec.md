@@ -84,11 +84,13 @@ scope decisions are first-class content, not omissions to apologize for.
 - **Langfuse tracing, external to this repo** (ADR-0012 skip row;
   `architecture/deploy.md`): if the `LANGFUSE_*` env vars are unset the
   tracing path is a no-op. The app is fully demoable with Langfuse absent.
-- An evaluation suite split across **promptfoo** (NL→SQL execution accuracy,
-  explanation faithfulness, safety/redteam) and **pytest** (SQL validator,
+- An evaluation suite split across **pytest** (SQL validator,
   sanity flags, backtest math, the rule state machine, the mock rule-engine
-  client, and the E2E pattern-recovery pipeline). Locates in
-  `backend/eval/`; phase-gated per `architecture/eval-design.md`.
+  client, and the E2E pattern-recovery pipeline) and an **LLM-judging
+  suite** (NL→SQL execution accuracy, explanation faithfulness,
+  safety/redteam) — the latter *deferred* until a judge model is available
+  (§10.1). Both locate in `backend/eval/`; phase-gated per
+  `architecture/eval-design.md`.
 
 ### Out of scope (v1) — and why
 
@@ -111,10 +113,6 @@ scope decisions are first-class content, not omissions to apologize for.
 - **Terraform / a real deployment target.** ADR-0008 consequences; the
   "repro on a fresh cloud host" capability has no customer in this project.
 - **Multi-tenant postdeploy, WAF, rate-limit tiers.** ADR-0012 skip row.
-- **A `Dockerfile` for the `api`.** ADR-0012 skip row: single local dev has
-  no customer for this today. The compose file is infra-only (Postgres +
-  optional pgadmin); the API runs from the local venv (`architecture/
-  deploy.md`).
 - **Feedback-loop learning and drift monitoring.** The *contract* for
   drift comparison is in `§10.4`; the build is deferred, listed in §15.
 
@@ -220,12 +218,11 @@ a factory-produced packaged agent.
 | Frontend framework | React + TypeScript | `features/{chat,workspace,insights,catalog}` + `components/ui/` (ADR-0009) |
 | Styling | Tailwind CSS v4 | |
 | UI components | shadcn/ui | |
-| Server-state | TanStack Query | owns all server state + invalidation |
-| Client-state | Zustand | transient UI only — never duplicates server data |
+| Data flow (client) | hand-rolled fetch client (`frontend/src/lib/http.ts`) + React hooks | each feature owns its API client and hooks; a small working layer — no TanStack Query/Zustand dependency |
 | Linting / typing | ruff + mypy | `make lint` |
-| Eval — LLM judging | promptfoo | NL→SQL accuracy, faithfulness, safety/redteam (see §10, ADR-0012) |
+| Eval — LLM judging | *deferred* (no judge model available) | NL→SQL accuracy, faithfulness, safety/redteam — designed in §10.1, not yet runnable (§15) |
 | Eval — deterministic | pytest | sanity flags, backtest math, E2E pattern recovery, state machine (see §10) |
-| Containerization | Docker Compose | infra-only: `postgres` + optional `pgadmin`. The `api` runs from the local venv (ADR-0012 skip row, `architecture/deploy.md`). |
+| Containerization | Docker Compose | root `docker-compose.yml`: `postgres` + `pgadmin` + `api` + `frontend` — all four run as containers (`make up`) |
 
 ---
 
@@ -241,7 +238,8 @@ a factory-produced packaged agent.
  └───────────────────────────┘        │  ┌──────────────────────────────────┐   │
                                        │  │  LangGraph StateGraph (ADR-0003) │   │
                                        │  │  model ⇄ tools → structured_out │   │
-                                       │  │  (saver = PostgresSaver, P1+)   │   │
+                                       │  │  (no checkpointer — run        │   │
+                                       │  │   state lives in appstate)     │   │
                                        │  └──────────────────────────────────┘   │
                                        │                                         │
                                        │  ┌────────────────────────────────────┐ │
@@ -267,7 +265,7 @@ a factory-produced packaged agent.
           │  │  mcc_codes            │        │  insights, rules,         │  │
           │  │                       │        │  backtest_results,        │  │
           │  │  role:                │        │  deployment_records,      │  │
-          │  │  reference_readonly   │        │  checkpoints×3            │  │
+          │  │  reference_readonly   │        │  (no checkpoint tables)   │  │
           │  │  (SELECT only)        │        │                           │  │
           │  │  data:                │        │  role: app_rw (DML)       │  │
           │  │  seed_reference.py    │        │  DDL: Alembic (ADR-0008)  │  │
@@ -293,9 +291,9 @@ state channels — `messages`, `grounding`, `error`. The `structured_output`
 node is the ADR-0006 terminal node, an *explicit* graph node that assembles
 the typed grounding object (reads the SQL and flags from the transcript,
 validates the model's free-text fields against the schema) — not a prompt
-hope. The `PostgresSaver` from P1 (ADR-0007: the checkpoint tables live in
-`appstate`, owned by the saver's `setup()`). Full detail in
-`architecture/agent-loop.md`.
+hope. No LangGraph checkpointer: the graph is compiled bare (`g.compile()`),
+and run state is persisted in `appstate` (`runs` + the SSE event log) by the
+service layer — ADR-0016. Full detail in `architecture/agent-loop.md`.
 
 **Tools available to the agent:**
 - `run_sql(query)` — executes a SQL statement. Every call passes through
@@ -328,7 +326,7 @@ around it (frozen, in `api-contract.md`) is `run.start`, `tool_call.start`,
 
 | Step | Trigger | Where it lives (ADR-0005) |
 |---|---|---|
-| `validate_sql` | Every `run_sql` call, before execution | `core/validator.py` (ADR-0002, sqlglot, Postgres dialect) |
+| `validate_sql` | Every `run_sql` call, before execution | `core/sql_validator.py` (ADR-0002, sqlglot, Postgres dialect) |
 | Sanity flags | Every query result, before returning to agent | `core/flags.py` (pure functions) |
 | Backtest (precision/recall/FPR/coverage/lift/temporal-stability) | FSM fires `POST /v1/rules/{id}/backtest` | `core/backtest.py` (deterministic math, never LLM) |
 | Rule state machine | Every FSM lifecycle verb | `core/rule_state.py` (deterministic; the `409` on illegal transitions) |
@@ -354,11 +352,11 @@ P1 ships.
   true by ADR-0007.
 - **`appstate` schema** — the application's own state:
   `conversations`, `runs`, `messages`, `revisions`, `insights`, `rules`,
-  `backtest_results`, `deployment_records`, plus the three LangGraph
-  `checkpoint*` tables (owned by the `PostgresSaver`'s `setup()`). Owned by
-  `app_rw` (DML). Full read/write from the app; never written to by the
+  `backtest_results`, `deployment_records`. No LangGraph checkpoint tables
+  — the graph runs without a checkpointer (ADR-0016); run state is the
+  `runs` row. Owned by `app_rw` (DML). Full read/write from the app; never written to by the
   agent (the agent has no path to `appstate` — that's the ADR-0005 wall made
-  concrete: the agent reaches `reference` via `core/validator.py` +
+  concrete: the agent reaches `reference` via `core/sql_validator.py` +
   `reference_readonly`, and the app reaches `appstate` via `services/`).
 - **DDL**: Alembic owns it (ADR-0008). `alembic upgrade head` is the single,
   orderable, reviewable path to the target schema + role state on any fresh
@@ -384,8 +382,7 @@ A dropped or closed stream does not *lose* the answer — the answer was
 stored by the command. Any client (browser, `curl`, a future service) can
 attach to a run in flight, replay a finished one, or poll — same data, no
 different code path. The full event set is in `api-contract.md`; the
-durable state it streams *from* is the run row + the LangGraph checkpoint,
-not a copy.
+durable state it streams *from* is the run row in `appstate`, not a copy.
 
 This is the ADR-0011 consequence that makes "the API is the product" true:
 the frontend is one *consumer* of the contract, and a `curl`-script or a
@@ -517,10 +514,12 @@ category is an "LLM eval" problem, and forcing deterministic logic through
 an LLM-judging tool would be its own shoe-horning. Detailed layout, repo
 locations, and phase gates in `architecture/eval-design.md`.
 
-### 10.1 promptfoo — LLM output judging
+### 10.1 LLM output judging — *deferred* (no judge model available yet)
 
-Fits promptfoo's actual model (input → provider call → judged output) for
-three categories:
+*Design as of P4; there is no runnable config yet (no
+`backend/eval/promptfoo/`), and §15 lists the deferral.* promptfoo
+would be the runner; the design fits its actual model (input → provider
+call → judged output) for three categories:
 
 | Category | Golden data | Scoring |
 |---|---|---|
@@ -545,14 +544,16 @@ evaluates the system.
 
 ### 10.3 Running the suite
 
-`make eval` runs **both** suites (promptfoo + pytest) against the running
-backend + the seeded Postgres, prints a summary. Fully repo-versioned:
-golden fixtures under `backend/eval/golden/` (split by `nl2sql/`,
-`adversarial/`, `patterns/`), promptfoo config under
-`backend/eval/promptfoo/`. Traces from a promptfoo/pytest run are *also*
-emitted to Langfuse if it's running (pure debug visibility) — but the
-suite's pass/fail and its fixtures **never depend on Langfuse persisting
-anything.** If the local Langfuse were wiped, `make eval` is unaffected.
+`make eval` runs the **deterministic suite** (pytest, via
+`backend/eval/harness.py`) against the running backend + the seeded
+Postgres, prints a summary. The LLM-judged half (NL→SQL accuracy,
+faithfulness, safety/redteam) is **deferred** until a judge model is
+available — see §10.1 and §15; there is no promptfoo config yet (no
+`backend/eval/promptfoo/`). Golden fixtures live under
+`backend/eval/golden/`. Traces from a run are *also* emitted to Langfuse
+if it's running (pure debug visibility) — but the suite's pass/fail and
+its fixtures **never depend on Langfuse persisting anything.** If the
+local Langfuse were wiped, `make eval` is unaffected.
 
 ### 10.4 Online evaluation (documented plan, *not* built in v1)
 
@@ -580,7 +581,7 @@ exists:
 - All agent-generated SQL **parsed** (sqlglot, ADR-0002) rather than
   regex-scanned, and rejected unless a single read-only `SELECT` (or, for
   rule drafts, a valid boolean `WHERE` expression) over allow-listed
-  tables/columns (the ADR-0005 wall: `core/validator.py`).
+  tables/columns (the ADR-0005 wall: `core/sql_validator.py`).
 - Execution via the dedicated **`reference_readonly` role** (ADR-0007),
   enforced row cap and statement timeout, **regardless** of what the model
   requested. The role is the *floor*: an `INSERT`/`UPDATE`/`DROP` on
@@ -592,7 +593,7 @@ exists:
   not just prompted against. ADR-0002 (sqlglot) is the *defense-in-depth*
   on top; the *role is the floor*. The two reinforce each other.
 - The wall (ADR-0005): the `agents → core` edge is the only route to the
-  DB, and the `core` functions (`validator.py`) are the gate. `tests/
+  DB, and the `core` functions (`sql_validator.py`) are the gate. `tests/
   test_architecture.py` is the running AST check (P0 DoD #5) that keeps it
   true, so a refactor that quietly adds `from app.core import` to
   `agents/` fails the test, not the production review.
@@ -603,8 +604,9 @@ exists:
   the system prompt states explicitly that cell content (including
   free-text columns like `merchant`) is data to analyze, **never**
   instructions to follow.
-- Covered by the **adversarial cases in the promptfoo redteam suite**
-  (§10.1), not taken on faith from the prompt alone. If the model *does*
+- Covered by the **adversarial cases in the LLM-judged redteam suite**
+  (designed in §10.1; *deferred* until a judge model is available — §15),
+  not taken on faith from the prompt alone. If the model *does*
   get tricked, the eval suite catches it: the redteam fixtures inject
   injection-shaped content into fixture data and expect the model to treat
   it as data, not to act on it.
@@ -660,12 +662,12 @@ semantics open-decision, and the API mapping per element in
   its detail (SQL, provenance, backtest history, approve/reject/deploy
   actions) without reopening the originating conversation.
 
-**State management:** TanStack Query owns all server state (conversations,
-messages, insights, rules, backtests) with invalidation on relevant
-mutations (e.g. approving a rule invalidates its detail and the catalog
-list). Zustand owns transient UI state only (active tab, focused
-insight/rule ID, composer draft text) — server data is never duplicated
-into Zustand.
+**State management:** each feature owns its API calls (a small hand-rolled
+fetch client, `frontend/src/lib/http.ts`) and holds the fetched state in
+React hooks, refetching on relevant mutations (e.g. approving a rule
+refreshes its detail and the catalog list). Transient UI state (active
+tab, focused insight/rule ID, composer draft text) lives in component
+state or a small app store — server data is never duplicated into it.
 
 **Directory (ADR-0009):** `features/{chat,workspace,insights,catalog}/`
 for the app slices, `components/ui/` for the primitives. Each `features/`
@@ -681,16 +683,18 @@ for where a new file lands — they are **not** an enforcement boundary
 1. Monorepo: `backend/` (FastAPI + LangGraph, layered
    `routers/` → `services/` → `agents/` → `core/` — ADR-0005, with
    `data/` as plumbing) + `frontend/` (React/TS, `features/` + `components/`)
-   + `backend/eval/` (golden + promptfoo config + pytest) + **a single
-   `docker-compose.yml` in `backend/`** (Postgres + optional pgadmin; the
-   `api` runs from the local venv, not a container — see §2 /
-   `architecture/deploy.md`).
+   + `backend/eval/` (golden fixtures + `harness.py` deterministic runner
+   + pytest) + **a single `docker-compose.yml` at the repo root**
+   (Postgres + pgadmin + `api` + `frontend` — all four run as containers;
+   the local-venv path in `architecture/deploy.md` is the
+   fast-iteration alternative).
 2. **This spec** — setup, architecture rationale, explicit deferred-items
    list (§2), how to run locally, how to run `make eval`.
 3. `backend/alembic/` (migrations) + `backend/scripts/seed_reference.py`
    (the reference dataset, loaded as data not code — the ADR-0008 split).
-4. Golden datasets under `backend/eval/golden/` + promptfoo config under
-   `backend/eval/promptfoo/` + pytest suite, all runnable via `make eval`.
+4. Golden datasets under `backend/eval/golden/` + the deterministic
+   pytest suite (`backend/eval/harness.py`), runnable via `make eval`
+   (the LLM-judged config is deferred — §10.1/§15).
 5. `Makefile` targets: `make lint`, `make test`, `make eval`, `make up`
    (docker compose), `make migrate` (alembic upgrade head), `make seed`
    (seed_reference.py), `make api` (uvicorn). Documented as the
@@ -703,9 +707,9 @@ for where a new file lands — they are **not** an enforcement boundary
 7. `docs/ux/wireframes.html` (the four frames: 3-pane, rail-expanded,
    catalog, edit-and-own) + `wireframes.md` (the coverage check + the one
    open call).
-8. `docs/decisions/0001-…-0012` — all `accepted` at the P0 freeze (done;
-   ADR-0010's rule, recorded here as the reason the flip is a status line
-   and not a rewrite).
+8. `docs/decisions/0001-…-0016` — 0001–0012 `accepted` at the P0 freeze
+   (done; ADR-0010's rule, recorded here as the reason the flip is a status
+   line and not a rewrite), 0013–0016 `accepted` in the P3/P4 phases.
 9. `tests/test_architecture.py` (the ADR-0005 wall AST check) — P0 DoD #5.
 
 ---
@@ -733,8 +737,10 @@ ADR-0012 skip row is the *principle*; this list is the *concrete cases*.
 - **A CI pipeline** (ADR-0012 skip row: `make lint/test/eval` are the
   manually-run equivalent; CI-ready in shape but no pipeline configured).
 - **WAF / rate-limit tiers** (ADR-0012 skip row).
-- **A `Dockerfile` for the `api`** (ADR-0012 skip row: single-local dev
-  has no customer for it today).
+- **The LLM-judged eval suite** (NL→SQL accuracy, faithfulness,
+  safety/redteam — designed in §10.1, promptfoo-shaped) — *deferred*
+  until a judge model is available; `make eval` runs the deterministic
+  pytest suite in the meantime.
 - **Dollar-value-weighted backtest metrics** (contingent on
   `transactions.amount` data quality — see §8).
 
@@ -756,6 +762,10 @@ ADR-0012 skip row is the *principle*; this list is the *concrete cases*.
 | ADR-0010 (decisions before diagrams) | `docs/diagrams/README.md`; the discipline in this doc |
 | ADR-0011 (API as product; SSE split) | §6.5; §7 the lifecycle; `api-contract.md` the contract; `ux/wireframes.md` the coverage |
 | ADR-0012 (aim for prod where cheap) | §2 out-of-scope rows; §12 the Langfuse boundary; §15 the deferred list |
+| ADR-0013 (P1 scope is the explore loop) | §2 in-scope; rule lifecycle + PostgresSaver deferral to P2 |
+| ADR-0014 (backtest universes and join basis) | §7 backtest semantics; §10.4 backtest-vs-actuals comparison |
+| ADR-0015 (infra SQL init; Alembic owns appstate) | §6.4 DDL vs. data split; `deploy.md` boot order |
+| ADR-0016 (MemorySaver is sufficient) | §6.2 no checkpointer; §6.4 no checkpoint tables; `api-contract.md` run state |
 
 ADR-0010 and ADR-0012 are the *policy* ADRs — they're the reason this
 document reads as a coherent pass rather than a patch pile.
