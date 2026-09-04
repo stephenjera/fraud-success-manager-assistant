@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import cast
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -55,7 +56,7 @@ class Settings(BaseSettings):
         if not text:
             return []
         if text.startswith("["):
-            return json.loads(text)
+            return cast(list[str], json.loads(text))
         return [item.strip() for item in text.split(",") if item.strip()]
 
 

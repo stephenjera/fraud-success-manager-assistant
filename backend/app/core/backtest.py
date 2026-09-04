@@ -144,10 +144,12 @@ class BacktestResult:
         }
 
 
-def _cells(con: psycopg.Connection, clause: str, *, where: sql.Composed) -> Universe:
+def _cells(con: psycopg.Connection, clause: str, *, where: sql.Composable) -> Universe:
     """One universe's four cells in a single pass (CASE template + WHERE)."""
     q = sql.SQL(_CELLS_TEMPLATE).format(clause=sql.SQL(clause)) + where
-    tp, fp, fn, tn = (int(x or 0) for x in con.execute(q).fetchone())
+    row = con.execute(q).fetchone()
+    assert row is not None  # the CASE aggregation always returns exactly one row
+    tp, fp, fn, tn = (int(x or 0) for x in row)
     return Universe(tp=tp, fp=fp, fn=fn, tn=tn)
 
 
@@ -161,15 +163,13 @@ def _temporal(con: psycopg.Connection, clause: str) -> dict[str, dict[str, float
     """
     # The median's date: the row at offset FLOOR(total/2) in a
     # date-ordered scan of the *labeled* universe.
-    total = int(
-        con.execute(
-            sql.SQL(
-                "SELECT COUNT(*) "
-                + _BASIS_FROM
-                + " WHERE fl.transaction_id IS NOT NULL"
-            )
-        ).fetchone()[0]
-    )
+    total_row = con.execute(
+        sql.SQL(
+            "SELECT COUNT(*) " + _BASIS_FROM + " WHERE fl.transaction_id IS NOT NULL"
+        )
+    ).fetchone()
+    assert total_row is not None  # COUNT(*) always returns a row
+    total = int(total_row[0])
     if not total:
         empty = {"precision": 0.0, "recall": 0.0}
         return {"earlier_slice": empty, "later_slice": empty}
@@ -198,7 +198,9 @@ def _temporal(con: psycopg.Connection, clause: str) -> dict[str, dict[str, float
             + _BASIS_FROM
             + " WHERE fl.transaction_id IS NOT NULL AND t.date "
         ).format(clause=sql.SQL(clause)) + sql.SQL(op + " %s")
-        tp, fp, fn = (int(x or 0) for x in con.execute(q, (bound,)).fetchone())
+        row = con.execute(q, (bound,)).fetchone()
+        assert row is not None  # the CASE aggregation always returns exactly one row
+        tp, fp, fn = (int(x or 0) for x in row)
         precision = tp / (tp + fp) if (tp + fp) else 0.0
         recall = tp / (tp + fn) if (tp + fn) else 0.0
         return {"precision": round(precision, 6), "recall": round(recall, 6)}

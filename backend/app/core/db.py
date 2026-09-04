@@ -83,7 +83,9 @@ def count_rows(table: str) -> int | None:
             cur.execute(
                 sql.SQL("SELECT COUNT(*) FROM {}").format(sql.Identifier(table))
             )
-            return int(cur.fetchone()[0])
+            row = cur.fetchone()
+            assert row is not None  # COUNT(*) always returns a row
+            return int(row[0])
     except Exception:  # noqa: BLE001 - unknown table is not a fatal flag-input
         return None
     finally:

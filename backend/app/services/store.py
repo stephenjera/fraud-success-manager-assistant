@@ -45,6 +45,7 @@ def create_conversation() -> tuple[str, datetime]:
         row = con.execute(
             "INSERT INTO conversations DEFAULT VALUES RETURNING id::text, created_at"
         ).fetchone()
+    assert row is not None  # INSERT … RETURNING always yields exactly one row
     return row[0], row[1]
 
 
@@ -95,13 +96,17 @@ def create_turn(conversation_id: str, text: str) -> tuple[str, str]:
             "INSERT INTO runs (conversation_id, status) VALUES (%s, 'running') RETURNING id::text",
             (conversation_id,),
         )
-        run_id = cur.fetchone()[0]
+        row = cur.fetchone()
+        assert row is not None  # INSERT … RETURNING always yields exactly one row
+        run_id = row[0]
         cur = con.execute(
             "INSERT INTO messages (conversation_id, run_id, status) VALUES (%s, %s, 'running') "
             "RETURNING id::text, created_at",
             (conversation_id, run_id),
         )
-        message_id, created_at = cur.fetchone()
+        row = cur.fetchone()
+        assert row is not None  # INSERT … RETURNING always yields exactly one row
+        message_id, created_at = row
         # rev-1 = the agent's draft (written when the grounding lands, not now).
         con.execute(
             "UPDATE conversations SET last_active = %s WHERE id=%s",
@@ -155,12 +160,12 @@ def add_rerun(
     Next ``position`` = existing max + 1 (rev-2, rev-3, …).
     """
     with _con() as con:
-        pos = int(
-            con.execute(
-                "SELECT coalesce(max(position),0)+1 FROM revisions WHERE message_id=%s",
-                (message_id,),
-            ).fetchone()[0]
-        )
+        pos_row = con.execute(
+            "SELECT coalesce(max(position),0)+1 FROM revisions WHERE message_id=%s",
+            (message_id,),
+        ).fetchone()
+        assert pos_row is not None  # coalesce(max(...),0)+1 always returns a row
+        pos = int(pos_row[0])
         row = con.execute(
             "INSERT INTO revisions (message_id, position, source, sql, sql_preview, flags) "
             "VALUES (%s, %s, 'rerun', %s, %s, %s) RETURNING id::text",
@@ -168,7 +173,8 @@ def add_rerun(
         ).fetchone()
         # rerun also carries the result for the sync response (result is not stored;
         # the durable fact is sql + flags — see data-model.md "no result-rows column").
-    return row[0]
+    assert row is not None  # INSERT … RETURNING always yields exactly one row
+    return str(row[0])
 
 
 def get_message(conversation_id: str, message_id: str) -> MessageRow:

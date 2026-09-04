@@ -118,6 +118,7 @@ def pin_insight(
         )
         .fetchone()
     )
+    assert ins is not None  # INSERT … RETURNING always yields exactly one row
     raw_assumptions = ins[9]
     return {
         "insight_id": ins[0],
@@ -259,9 +260,10 @@ def rule_has_backtest(rule_id: str) -> bool:
     n = (
         _con()
         .execute("SELECT COUNT(*) FROM backtest_results WHERE rule_id=%s", (rule_id,))
-        .fetchone()[0]
+        .fetchone()
     )
-    return int(n) > 0
+    assert n is not None  # COUNT(*) always returns a row
+    return int(n[0]) > 0
 
 
 def draft_rule(insight_id: str, *, title: str | None) -> dict[str, Any]:
@@ -309,6 +311,7 @@ def draft_rule(insight_id: str, *, title: str | None) -> dict[str, Any]:
         )
         .fetchone()
     )
+    assert row is not None  # INSERT … RETURNING always yields exactly one row
     # P5: use stored rationale/assumptions if present; fall back to defaults.
     stored_assumptions = ins[5]
     assumptions = (
@@ -542,6 +545,7 @@ def backtest_rule(rule_id: str, *, window: str | None = None) -> dict[str, Any]:
         )
         .fetchone()
     )
+    assert row is not None  # INSERT … RETURNING always yields exactly one row
     # The transition "draft → backtested" is the row. Re-read to reflect it.
     updated = _get_rule(rule_id)
     if updated["status"] == rule_state.DRAFT:
@@ -711,6 +715,7 @@ def deploy_rule(rule_id: str) -> dict[str, Any]:
         )
         .fetchone()
     )
+    assert row is not None  # INSERT … RETURNING always yields exactly one row
     _con().execute("UPDATE rules SET status='deployed' WHERE id=%s", (rule_id,))
     return {
         "deployment_id": row[0],

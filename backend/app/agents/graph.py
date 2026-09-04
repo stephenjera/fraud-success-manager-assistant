@@ -136,17 +136,23 @@ def profile_column(table: str, column: str) -> str:
     try:
         with con.cursor() as cur:
             cur.execute(_sql.SQL("SELECT COUNT(*) FROM {}.{}").format(ref, tbl))
-            total = int(cur.fetchone()[0])
+            row = cur.fetchone()
+            assert row is not None  # COUNT(*) always returns a row
+            total = int(row[0])
             cur.execute(
                 _sql.SQL("SELECT COUNT(*) FROM {}.{} WHERE {} IS NULL").format(
                     ref, tbl, col
                 )
             )
-            nulls = int(cur.fetchone()[0])
+            row = cur.fetchone()
+            assert row is not None  # COUNT(*) always returns a row
+            nulls = int(row[0])
             cur.execute(
                 _sql.SQL("SELECT COUNT(DISTINCT {}) FROM {}.{}").format(col, ref, tbl)
             )
-            distinct = int(cur.fetchone()[0])
+            row = cur.fetchone()
+            assert row is not None  # COUNT(*) always returns a row
+            distinct = int(row[0])
             cur.execute(
                 _sql.SQL("SELECT {} FROM {}.{} ORDER BY {} LIMIT 5").format(
                     col, ref, tbl, col

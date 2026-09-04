@@ -1,12 +1,24 @@
-.PHONY: lint test eval
+.PHONY: lint test eval up migrate seed api
 
 lint:
 	uv run ruff check
 	uv run ruff format --check
-	# ponytail: mypy skipped — 38 pre-existing errors in app/, add back when writing new app/ code
+	uv run mypy app
 
 test:
 	uv run pytest
 
 eval:
-	uv run pytest tests/test_sql_validator.py tests/test_flags.py tests/test_rule_state.py tests/test_architecture.py -q
+	uv run python eval/harness.py -q
+
+up:
+	docker compose -f ../docker-compose.yml up -d --build
+
+migrate:
+	uv run alembic upgrade head
+
+seed:
+	uv run python scripts/seed_reference.py
+
+api:
+	uv run python -m uvicorn app.main:app --host 0.0.0.0 --port 8000

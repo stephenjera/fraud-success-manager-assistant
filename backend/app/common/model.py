@@ -7,7 +7,7 @@ OpenAI, ...) by changing environment variables alone — no code changes.
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any, cast
 
 from langchain.chat_models import init_chat_model
 
@@ -68,4 +68,6 @@ def get_model(**kwargs: Any) -> BaseChatModel:
         kwargs.setdefault("base_url", settings.llm_api_base.rstrip("/") + "/v1")
         kwargs.setdefault("api_key", settings.llm_api_key or "ollama")
 
-    return init_chat_model(model=model, model_provider=provider, **kwargs)
+    return cast(
+        BaseChatModel, init_chat_model(model=model, model_provider=provider, **kwargs)
+    )

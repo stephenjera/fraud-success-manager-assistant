@@ -42,15 +42,13 @@ class InvalidWhereClause(ValueError):
     """The clause is not a safe single expression over the join basis."""
 
 
-def _condition(sql_text: str) -> exp.Expression | None:
+def _condition(sql_text: str) -> exp.Expr | None:
     """Re-parse a fragment as a condition, or ``None`` when it is not one."""
     text = (sql_text or "").strip().rstrip(";").rstrip()
     if not text:
         return None
     try:
-        expr: exp.Expression = sqlglot.parse_one(
-            text, read=_DIALECT, into=exp.Condition
-        )
+        expr = sqlglot.parse_one(text, read=_DIALECT, into=exp.Condition)
     except sqlglot.errors.ParseError:  # noqa: PERF203 - single guarded call
         return None
     return expr if expr is not None and not isinstance(expr, _FORBIDDEN_EXPR) else None
@@ -74,7 +72,7 @@ def derive_where_clause(pinned_sql: str) -> str:
         if isinstance(clause, (exp.Paren, exp.Bracket)) and clause.this is not None:
             clause = clause.this
         if clause is not None:
-            out = clause.sql(dialect=_DIALECT)
+            out = str(clause.sql(dialect=_DIALECT))
             if out and out.upper() not in {"1", "TRUE"}:
                 return out
     return "1=1"
@@ -83,7 +81,7 @@ def derive_where_clause(pinned_sql: str) -> str:
 def table_names(sql_text: str) -> list[str]:
     """The tables a SQL fragment references (order-independent)."""
     nodes = sqlglot.parse(sql_text, read=_DIALECT) or [
-        sqlglot.maybe_parse(sql_text, read=_DIALECT)
+        sqlglot.maybe_parse(sql_text, dialect=_DIALECT)
     ]
     tables: list[str] = []
     for node in nodes:
