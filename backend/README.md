@@ -42,7 +42,6 @@ app/
     visualize.py      LangGraph → Mermaid diagram helper
 data/
   data.db             Dev transaction dataset (tracked: only copy of the data)
-  sessions.db         Session persistence store
   schema.sql          Reference schema DDL (basis for the seed script)
 ```
 

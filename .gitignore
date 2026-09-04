@@ -21,11 +21,14 @@ node_modules/
 .env
 .envrc
 
-# --- SQLite runtime sidecars ---
-# The .db files themselves stay tracked: they are the only copy of the dev
-# dataset for this local project. Only WAL-mode sidecars are transient.
+# --- SQLite runtime sidecars & leftovers ---
+# data/data.db stays tracked: it is the only copy of the dev dataset for this
+# local project. Only WAL-mode sidecars are transient.
 *.db-shm
 *.db-wal
+# Pre-Postgres leftover (run state now lives in the appstate schema); no code
+# reads or writes it anymore.
+backend/data/sessions.db
 
 # --- Postgres data volume (docker compose) ---
 # Container-owned data dir; recreate with `docker compose down -v`
