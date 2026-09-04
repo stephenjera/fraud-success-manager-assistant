@@ -4,8 +4,9 @@ The agent's only door to data: a synchronous reader that executes a validated
 read-only SELECT capped at :data:`ROW_CAP` rows. The connection target is
 ``settings.reference_dsn`` (the read-only role), so a write is a permission
 error at the Postgres layer, not a caught exception — the role is the floor.
-A ``SET search_path = reference`` per connection makes ``reference.*`` visible
-unqualified, without touching the SQL the model wrote.
+A ``SET search_path = reference`` and a per-connection ``SET statement_timeout``
+make ``reference.*`` visible unqualified and bound every statement, without
+touching the SQL the model wrote.
 """
 
 from __future__ import annotations
@@ -22,10 +23,18 @@ class SqlExecutionError(RuntimeError):
 
 
 def _connect() -> psycopg.Connection:
-    """A read-only connection scoped to the ``reference`` schema."""
+    """A read-only connection scoped to the ``reference`` schema.
+
+    Every statement on this connection is bounded by
+    ``settings.readonly_statement_timeout_ms`` (spec: enforced statement
+    timeout, regardless of what the model requested).
+    """
     con = psycopg.connect(settings.reference_dsn, autocommit=True)
     with con.cursor() as cur:
         cur.execute("SET search_path = reference")
+        cur.execute(
+            f"SET statement_timeout = {int(settings.readonly_statement_timeout_ms)}"
+        )
     return con
 
 

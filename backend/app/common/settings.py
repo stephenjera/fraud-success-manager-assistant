@@ -29,6 +29,11 @@ class Settings(BaseSettings):
     reference_dsn: str = "postgresql://reference_readonly:reference_readonly@localhost:5433/fraud?options=-csearch_path%3Dreference"
     appstate_dsn: str = "postgresql://app_rw:app_rw@localhost:5433/fraud?options=-csearch_path%3Dappstate"
     run_timeout_s: int = 60
+    # Hard cap on how long any single statement may run on the read-only
+    # reference reader (spec: "enforced row cap and statement timeout,
+    # regardless of what the model requested"). Applied per connection in
+    # core/db.py via SET statement_timeout.
+    readonly_statement_timeout_ms: int = 5000
     # LLM model + run budgets
     turn_wall_clock_s: int = 120
 
