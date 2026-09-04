@@ -65,17 +65,10 @@ Rules:
 | `ux/` | Wireframe notes + the interactions they encode. |
 | `diagrams/` | Excalidraw sources + SVG exports, one per architecture doc. |
 
-## State (as of the 2026-09-02 P0 freeze)
+## State (as of 2026-09-04)
 
-P0's freeze landed: **all ADRs `accepted`**, `system-spec.md` rewritten as
-one coherent pass (the root spec removed), and every `architecture/*.md`
-doc — including `api-contract.md` (frozen: routes/DTOs/SSE set/error codes
-+ the four gap closures A/B/C/H) — has content. The UX frames are in
-`ux/wireframes.html` (HTML, not Excalidraw — see the note in `ux/
-wireframes.md` for why). The one still-open call is the rail's **"Evaluate"
-semantics** (frames 1–2 in `ux/wireframes.md`), a decision to lock before
-P3 builds the rail.
-
-What's *not* done is the code, not the design: P1 (reliable NL→SQL + the
-proof), P2 (rule lifecycle), P3 (frontend), P4 (hardening) are ahead in
-`phases/00-roadmap.md`.
+All phases are built and the suites are green: **P0–P5 done** (with the
+P2.5 live-mode proof and P3.5 Docker/Playwright add-ons), ADR-0001 through
+ADR-0016 `accepted`, `make lint` (ruff + mypy) / `make test` / `make eval`
+all passing. The one deferred work stream is the LLM-judged eval suite —
+no judge model is available yet (spec §10.1/§15).

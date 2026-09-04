@@ -4,7 +4,8 @@ An AI copilot for fraud analysts: natural-language exploration of transaction
 data, pattern validation, and rule drafting — ending in a backtested, fully
 provenanced SQL `WHERE` clause rule ready for a downstream rule engine.
 
-**Status:** P0–P3 + P3.5 done. P4 (hardening & docs) in progress.
+**Status:** P0–P5 done (incl. P2.5, P3.5). `make lint` / `make test` /
+`make eval` all green.
 The spec is the source of truth: [`docs/system-spec.md`](./docs/system-spec.md).
 
 The decision record lives in [`docs/decisions/`](./docs/decisions/)
@@ -22,7 +23,8 @@ The decision record lives in [`docs/decisions/`](./docs/decisions/)
 | P2.5 | Live-mode proof (real Ollama + real reference), bug fixes | ✅ done |
 | P3 | Three-pane frontend, chat/workspace/insights/catalog, wireframes | ✅ done |
 | P3.5 | Docker Compose at root, Dockerfiles, Playwright STREAM_LOST regression, pg_catalog test | ✅ done |
-| P4 | Makefile, mypy config, eval harness, missing test files, docs reconciliation | 🔄 in progress |
+| P4 | Makefile, mypy in lint, eval harness, docs reconciliation | ✅ done |
+| P5 | Conversational rule proposals, run-terminal robustness, prompt supervisor | ✅ done |
 
 ## Repository layout
 
@@ -65,12 +67,12 @@ This starts Postgres, pgadmin, the API (with alembic + seed), and the frontend.
 # Start Postgres
 docker compose up -d db
 
-# Backend
+# Backend (from backend/)
 cd backend
 uv sync
-alembic upgrade head
-python scripts/seed_reference.py
-uv run python -m uvicorn app.main:app --reload --port 8000
+make migrate    # alembic upgrade head
+make seed       # scripts/seed_reference.py
+make api        # uvicorn app.main:app --port 8000
 
 # Frontend
 cd frontend
@@ -102,6 +104,8 @@ make eval    # deterministic eval subset (validator, flags, backtest math, rule 
 
 ## Deferred items
 
-Per spec §13, these are intentionally not built yet: auth/RBAC, real rule
-engine integration, post-deployment drift monitoring, feedback-loop learning.
+Per spec §15, these are intentionally not built yet: the LLM-judged eval
+suite (NL→SQL accuracy, faithfulness, safety/redteam — deferred until a
+judge model is available), auth/RBAC, real rule-engine integration,
+post-deployment drift monitoring, feedback-loop learning.
 CI pipeline is out of scope until a real deployment target exists (ADR-0012).

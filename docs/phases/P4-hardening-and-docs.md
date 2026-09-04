@@ -1,6 +1,10 @@
 # P4 — Hardening & docs
 
-**Status:** in progress (2026-09-04).
+**Status:** done (2026-09-04). Closed with `make lint` / `make test` /
+`make eval` green: mypy brought to zero and added to `make lint`
+(commit b7134ce), the readonly reader given a real statement timeout
+(9b0cb97), `make eval` unified on `backend/eval/harness.py`, and the
+spec/contract reconciled to built state (f85095c).
 
 The last phase. Ships `make eval` with zero red assertions and a README
 that matches the code.
@@ -15,9 +19,9 @@ that matches the code.
    (promptfoo is a global npm tool, not repo-local). These are
    *the* deliverables (spec §14) and are runnable by hand in the repo
    with no CI pipeline required (ADR-0012).
-2. **README reconciled to actual state.** Names P0–P3 done, P4 in
-   progress. Describes what's built (agent, core gates, rule lifecycle,
-   frontend, eval suite). Points to `docs/system-spec.md` and
+2. **README reconciled to actual state.** Names the full phase table with
+   accurate statuses. Describes what's built (agent, core gates, rule
+   lifecycle, frontend, eval suite). Points to `docs/system-spec.md` and
    `docs/decisions/`.
 3. **ADR tree complete and consistent.** ADR-0001 through ADR-0016 all
    `accepted`. ADR-0016 formally rejects PostgresSaver (the deferral
