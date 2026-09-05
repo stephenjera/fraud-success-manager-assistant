@@ -137,3 +137,29 @@ class TestDraftRule:
         r = client.post(f"/v1/insights/{MISSING}/draft-rule")
         assert r.status_code == 404
         assert r.json()["error"]["code"] == "STATE_NOT_FOUND"
+
+
+class TestPinSqlValidation:
+    """Pinned/patched SQL is validated: garbage is a 400 SQL_REJECTED, not a 201 (A6)."""
+
+    def test_pin_rejects_garbage_sql(self, client, db_ok):
+        cid, mid, revision_id = _pin_client(client)
+        body = {"message_id": mid, "revision_id": revision_id, "sql": "THIS IS NOT SQL"}
+        r = client.post(f"/v1/conversations/{cid}/insights", json=body)
+        assert r.status_code == 400, r.text
+        err = r.json()["error"]
+        assert err["code"] == "SQL_REJECTED"
+        assert err["details"]["offending_sql"] == "THIS IS NOT SQL"
+
+    def test_pin_rejects_unparseable_sql(self, client, db_ok):
+        cid, mid, revision_id = _pin_client(client)
+        body = {"message_id": mid, "revision_id": revision_id, "sql": "((("}
+        r = client.post(f"/v1/conversations/{cid}/insights", json=body)
+        assert r.status_code == 400, r.text
+        assert r.json()["error"]["details"]["offending_sql"] == "((("
+
+    def test_patch_rejects_unparseable_sql(self, client, db_ok):
+        _, iid = _pin(client)
+        r = client.patch(f"/v1/insights/{iid}", json={"sql": "((("})
+        assert r.status_code == 400, r.text
+        assert r.json()["error"]["details"]["offending_sql"] == "((("

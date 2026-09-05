@@ -29,6 +29,7 @@ from app.core import backtest as core_backtest
 from app.core import rule_engine as core_engine
 from app.core import rule_state
 from app.core import rules as core_rules
+from app.core import sql_validator
 from app.services import store
 
 
@@ -92,6 +93,12 @@ def pin_insight(
             raise api_errors.sql_rejected(
                 "rule_where_clause failed core validation", rule_where_clause
             ) from exc
+    # A6: the pinned SQL itself must be parseable read-only SQL — garbage is a
+    # 400 SQL_REJECTED with the offending SQL, never a stored 201.
+    try:
+        sql_validator.validate_sql(sql)
+    except sql_validator.SqlRejected as exc:
+        raise api_errors.sql_rejected(exc.reason, exc.sql) from exc
     assumptions_json = None
     if rule_assumptions:
         assumptions_json = json.dumps(rule_assumptions)
@@ -200,6 +207,11 @@ def patch_insight(
     """Edit the pin before drafting (PATCH /v1/insights/{id})."""
     if not store.is_uuid(insight_id):
         raise api_errors.not_found(f"Insight {insight_id!r} not found.")
+    if sql is not None:
+        try:
+            sql_validator.validate_sql(sql)
+        except sql_validator.SqlRejected as exc:
+            raise api_errors.sql_rejected(exc.reason, exc.sql) from exc
     row = (
         _con()
         .execute(
