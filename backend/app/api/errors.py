@@ -14,6 +14,8 @@ from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 
+from app.common.settings import settings
+
 # Stable, machine-readable codes the contract promises (api-contract.md).
 RUN_TIMEOUT = "RUN_TIMEOUT"
 SQL_REJECTED = "SQL_REJECTED"
@@ -91,15 +93,20 @@ def register(app: FastAPI) -> None:
         )
 
     @app.exception_handler(Exception)
-    async def _internal(_: Request, exc: Exception) -> JSONResponse:
-        detail = (
-            exc.args[0]
-            if exc.args and isinstance(exc.args[0], str)
-            else type(exc).__name__
-        )
+    async def _internal(request: Request, exc: Exception) -> JSONResponse:
         return JSONResponse(
             status_code=500,
-            content=ApiError(
-                INTERNAL_ERROR, "Unexpected server error.", details={"error": detail}
-            ).body(),
+            content=ApiError(INTERNAL_ERROR, "Unexpected server error.").body(),
+            headers=_cors_headers(request),
         )
+
+
+def _cors_headers(request: Request) -> dict[str, str]:
+    """CORS for a 500 the CORS middleware never sees (it runs under ServerErrorMiddleware)."""
+    origin = request.headers.get("origin")
+    if origin in settings.cors_origins:
+        return {
+            "access-control-allow-origin": origin,
+            "access-control-allow-credentials": "true",
+        }
+    return {}
