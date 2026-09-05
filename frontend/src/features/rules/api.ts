@@ -1,8 +1,8 @@
-// The shared rules client — the rule lifecycle is the catalog's domain
-// (spec §7 state machine). The insights rail reuses this for evaluate/
-// approve/reject rather than duplicating the one-liner calls (ADR-0009: one
-// folder per work area owns its calls; a rules client is singular, so it
-// lives here and is imported, not re-written).
+// The shared rules client — the rule lifecycle is this feature's domain
+// (spec §7 state machine). The insights rail reuses this for draft/
+// backtest/approve/reject rather than duplicating the one-liner calls
+// (ADR-0009: one folder per work area owns its calls; a rules client is
+// singular, so it lives here and is imported, not re-written).
 import { api } from "@/lib/http"
 import type {
   ApproveOut,

@@ -16,7 +16,7 @@ import type {
   Insight,
   RuleStatus,
 } from "@/lib/types"
-import { rulesApi } from "../catalog/api"
+import { rulesApi } from "../rules/api"
 
 // P5: check if this insight carries a model-proposed rule.
 function hasProposal(ins: Insight): boolean {

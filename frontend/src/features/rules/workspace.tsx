@@ -1,7 +1,11 @@
-// The Rule Catalog (Frame 3) — status filter + rule grid + detail drawer.
-// Separate from the main view per spec §13. The rule lifecycle is this
-// feature's domain (ADR-0009), so the drawer drives the lifecycle verbs
-// against the shared rulesApi.
+// The Rule Workspace (Frame 3) — the rules list and the detail live in one
+// component. The lifecycle is this feature's domain (ADR-0009); the detail
+// drives the lifecycle verbs against the shared rulesApi.
+//
+// B5 (findings #1 + #14): a single `openId` state replaces the old
+// `open` + `showDetail` pair — closing sets it to null, so re-clicking the
+// same rule re-fetches and re-opens. A Backtest keeps the detail open on the
+// updated rule (no view reset).
 import * as React from "react"
 import { ArrowLeft, Rocket, Search } from "lucide-react"
 
@@ -20,18 +24,18 @@ const ratio = (x: number | null | undefined): string =>
 const lift = (x: number | null | undefined): string =>
   x === null || x === undefined || Number.isNaN(x) ? "—" : `${x.toFixed(1)}×`
 
-interface CatalogPaneProps {
+interface RuleWorkspaceProps {
   refreshKey?: string
 }
 
-function RuleDrawer({
+function RuleDetailPane({
   rule,
   onClose,
-  onChanged,
+  onUpdated,
 }: {
   rule: RuleDetail
   onClose: () => void
-  onChanged: () => void
+  onUpdated: () => void
 }) {
   const [verb, setVerb] = React.useState<{ running: string; error: string | null }>({
     running: "",
@@ -39,27 +43,11 @@ function RuleDrawer({
   })
   const [result, setResult] = React.useState<BacktestResult | null>(null)
 
-  const act = React.useCallback(
-    async (label: string, fn: () => Promise<unknown>) => {
-      setVerb({ running: label, error: null })
-      try {
-        const out = (await fn()) as { labeled_only?: unknown } | null
-        if (out && "labeled_only" in out) setResult(out as unknown as BacktestResult)
-        onChanged()
-      } catch (e) {
-        setVerb({ running: "", error: e instanceof ApiError ? `${e.code} — ${e.message}` : `${label} failed.` })
-      }
-    },
-    [onChanged],
-  )
-
-  // The deep metrics for the latest backtest, fetched on demand (the card
-  // already carries the summary — this is the full two-universe report).
-  React.useEffect(() => {
+  // Re-fetch the full two-universe report for a rule that has a backtest.
+  const loadBacktest = React.useCallback(() => {
     const lb = rule.latest_backtest
     if (!lb) return
     let live = true
-    setResult(null)
     rulesApi
       .getBacktest(rule.rule_id, lb.backtest_id)
       .then((r) => live && setResult(r))
@@ -67,8 +55,32 @@ function RuleDrawer({
     return () => {
       live = false
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [rule.rule_id])
+    // ponytail: keyed on rule identity; the report refetches from `rule`
+  }, [rule.rule_id, rule.latest_backtest])
+
+  React.useEffect(() => {
+    setResult(null)
+    return loadBacktest()
+  }, [loadBacktest])
+
+  // A verb that moves the rule forward. Keep the detail open on the updated
+  // rule: refetch the detail in place and refresh the list's statuses.
+  const act = React.useCallback(
+    async (label: string, fn: () => Promise<unknown>) => {
+      setVerb({ running: label, error: null })
+      try {
+        // The verb has moved the rule; the parent refetches the detail in
+        // place (keeping this open) and refreshes the list. The next effect
+        // for the fresh `latest_backtest` refires to pull the report.
+        await fn()
+        setVerb({ running: "", error: null })
+        void onUpdated()
+      } catch (e) {
+        setVerb({ running: "", error: e instanceof ApiError ? `${e.code} — ${e.message}` : `${label} failed.` })
+      }
+    },
+    [onUpdated],
+  )
 
   const lo = result?.labeled_only
   const fu = result?.full_universe
@@ -90,6 +102,13 @@ function RuleDrawer({
           <ArrowLeft aria-hidden />
         </Button>
       </header>
+
+      {rule.rationale ? (
+        <Card className="p-4">
+          <CardTitle className="text-xs uppercase tracking-widest text-muted-foreground">Why this rule</CardTitle>
+          <CardContent className="mt-1.5 text-sm leading-relaxed text-foreground/90">{rule.rationale}</CardContent>
+        </Card>
+      ) : null}
 
       <Card className="p-4">
         <CardTitle className="text-xs uppercase tracking-widest text-muted-foreground">
@@ -187,14 +206,13 @@ function RuleDrawer({
   )
 }
 
-function CatalogPane({ refreshKey }: CatalogPaneProps) {
+function RuleWorkspace({ refreshKey }: RuleWorkspaceProps) {
   const [status, setStatus] = React.useState<RuleStatus | "all">("all")
   const [rules, setRules] = React.useState<RuleCard[]>([])
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
-  const [open, setOpen] = React.useState<string | null>(null)
+  const [openId, setOpenId] = React.useState<string | null>(null)
   const [detail, setDetail] = React.useState<RuleDetail | null>(null)
-  const [showDetail, setShowDetail] = React.useState(false)
 
   const load = React.useCallback((s: RuleStatus | "all") => {
     setLoading(true)
@@ -210,31 +228,41 @@ function CatalogPane({ refreshKey }: CatalogPaneProps) {
     load(status)
   }, [status, load, refreshKey])
 
+  // Single source of truth for "which rule is open". Closing sets it null;
+  // re-clicking the same card sets it back, so the effect re-fetches.
   React.useEffect(() => {
-    if (!open) {
-      setShowDetail(false)
+    if (!openId) {
       setDetail(null)
       return
     }
+    let live = true
     rulesApi
-      .get(open)
-      .then((d) => {
-        setDetail(d)
-        setShowDetail(true)
-      })
+      .get(openId)
+      .then((d) => live && setDetail(d))
       .catch((e) => {
+        if (!live) return
         setError(e instanceof ApiError ? e.message : "Could not open this rule.")
-        setOpen(null)
+        setOpenId(null)
       })
-  }, [open])
+    return () => {
+      live = false
+    }
+  }, [openId])
 
-  if (showDetail && detail) {
+  if (openId && detail) {
     return (
-      <RuleDrawer
+      <RuleDetailPane
         rule={detail}
-        onClose={() => setShowDetail(false)}
-        onChanged={() => {
-          setShowDetail(false)
+        onClose={() => setOpenId(null)}
+        onUpdated={() => {
+          // A lifecycle verb moved the rule. Refetch the detail in place (not
+          // the whole view) so the new status and latest_backtest show; the
+          // drawer's backtest effect refires for the fresh report. The list
+          // refreshes so the card reflects the verb.
+          rulesApi
+            .get(openId)
+            .then(setDetail)
+            .catch((e) => setError(e instanceof ApiError ? e.message : "Could not reload this rule."))
           load(status)
         }}
       />
@@ -292,7 +320,7 @@ function CatalogPane({ refreshKey }: CatalogPaneProps) {
             {rules.map((r) => (
               <button
                 key={r.rule_id}
-                onClick={() => setOpen(r.rule_id)}
+                onClick={() => setOpenId(r.rule_id)}
                 className="group text-left"
               >
                 <Card className="p-4 transition-shadow group-hover:shadow-md">
@@ -317,5 +345,5 @@ function CatalogPane({ refreshKey }: CatalogPaneProps) {
   )
 }
 
-export { CatalogPane }
-export type { CatalogPaneProps }
+export { RuleWorkspace }
+export type { RuleWorkspaceProps }
