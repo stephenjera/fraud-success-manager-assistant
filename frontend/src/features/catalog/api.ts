@@ -1,8 +1,8 @@
-// The shared rules client — the rule lifecycle is this feature's domain
-// (spec §7 state machine). The insights rail reuses this for draft/
-// backtest/approve/reject rather than duplicating the one-liner calls
-// (ADR-0009: one folder per work area owns its calls; a rules client is
-// singular, so it lives here and is imported, not re-written).
+// The shared rules client — the rule lifecycle is the catalog's domain
+// (spec §7 state machine). The insights rail reuses this for evaluate/
+// approve/reject rather than duplicating the one-liner calls (ADR-0009: one
+// folder per work area owns its calls; a rules client is singular, so it
+// lives here and is imported, not re-written).
 import { api } from "@/lib/http"
 import type {
   ApproveOut,
@@ -27,12 +27,6 @@ export const rulesApi = {
       .then((e) => e.items),
 
   get: (ruleId: string) => api.get<RuleDetail>(`/rules/${ruleId}`),
-
-  // Edit-and-own the clause. The freeze line (a backtest row already exists)
-  // is enforced by the backend with 409 RULE_ILLEGAL_TRANSITION; the UI also
-  // refuses to send it once `latest_backtest` is set.
-  patchWhereClause: (ruleId: string, where_clause: string) =>
-    api.patch<RuleDetail>(`/rules/${ruleId}`, { where_clause }),
 
   // The command — deterministic, never the LLM (spec §7.4). Returns the report.
   backtest: (ruleId: string, window?: "full" | "custom") =>
