@@ -11,6 +11,7 @@ import re
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.errors import ParseError
 
 _DIALECT = "postgres"
 # AST node types that can never be part of a read-only SELECT.
@@ -82,7 +83,10 @@ def validate_sql(sql: str) -> str:
     if token:
         raise SqlRejected(f"Read-only SELECT only (found {token!r}).", text)
 
-    parsed = sqlglot.parse(text, read=_DIALECT)
+    try:
+        parsed = sqlglot.parse(text, read=_DIALECT)
+    except ParseError as exc:
+        raise SqlRejected("Could not parse as SQL.", text) from exc
     if not parsed:
         raise SqlRejected("Could not parse as SQL.", text)
     if len(parsed) != 1:

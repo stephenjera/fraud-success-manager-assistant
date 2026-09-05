@@ -66,6 +66,25 @@ class RejectsWrites(unittest.TestCase):
         self._assert_rejected("SELECT 1; DROP TABLE users")
 
 
+class ParseErrorIsRejected(unittest.TestCase):
+    """sqlglot ParseError must surface as SqlRejected, never escape (A2)."""
+
+    def _assert_rejected(self, sql: str) -> None:
+        with self.assertRaises(SqlRejected) as ctx:
+            validate_sql(sql)
+        self.assertTrue(ctx.exception.reason)
+        self.assertEqual(ctx.exception.sql, sql)
+
+    def test_unbalanced_parens_rejected(self) -> None:
+        self._assert_rejected("(((")
+
+    def test_dangling_expression_rejected(self) -> None:
+        self._assert_rejected("x =")
+
+    def test_garbage_still_rejected(self) -> None:
+        self._assert_rejected("THIS IS NOT SQL")
+
+
 class PGCatalogPolicy(unittest.TestCase):
     """P3.5 — pg_catalog is allowed by design (chaos report, by design section).
 
