@@ -56,7 +56,11 @@ function ActivityRow({ item }: { item: ActivityItem }) {
   )
 }
 
-function TurnRow({ turn }: { turn: Turn }) {
+// B10: assistant turns with a grounding carry an affordance to open them in
+// the workspace. The parent's onSelected machinery (useChat.ts:49, :185)
+// already resets the workspace's dirty state on new select; adding a click
+// here covers "switch to an older turn's grounding."
+function TurnRow({ turn, onSelect }: { turn: Turn; onSelect?: (t: Turn) => void }) {
   if (turn.role === "user") {
     return (
       <div className="flex justify-end">
@@ -67,9 +71,31 @@ function TurnRow({ turn }: { turn: Turn }) {
     )
   }
   const running = turn.status === "running"
+  const grounded = Boolean(turn.grounding)
+  const clickable = grounded && Boolean(onSelect)
   return (
     <div className="flex flex-col gap-3">
-      <div className="rounded-2xl rounded-tl-md border border-border bg-card p-4 shadow-sm">
+      <div
+        role={clickable ? "button" : undefined}
+        tabIndex={clickable ? 0 : undefined}
+        aria-label={clickable ? "Open this answer in the workspace" : undefined}
+        onClick={clickable ? () => onSelect?.(turn) : undefined}
+        onKeyDown={
+          clickable
+            ? (e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault()
+                  onSelect?.(turn)
+                }
+              }
+            : undefined
+        }
+        className={cn(
+          "rounded-2xl rounded-tl-md border border-border bg-card p-4 shadow-sm transition-colors",
+          clickable &&
+            "cursor-pointer hover:border-ring/40 focus-visible:outline-none focus-visible:ring-3 focus-visible:ring-ring/40",
+        )}
+      >
         <div className="flex items-center gap-2">
           <Badge variant="secondary" className="text-[0.6rem] uppercase tracking-widest">
             assistant
@@ -124,9 +150,10 @@ export interface ChatPaneProps {
   busy: boolean
   error: string | null
   onSend: (text: string) => void
+  onSelect?: (turn: Turn) => void
 }
 
-function ChatPane({ turns, busy, error, onSend }: ChatPaneProps) {
+function ChatPane({ turns, busy, error, onSend, onSelect }: ChatPaneProps) {
   const [draft, setDraft] = React.useState("")
   const scrollerRef = React.useRef<HTMLDivElement>(null)
 
@@ -173,7 +200,7 @@ function ChatPane({ turns, busy, error, onSend }: ChatPaneProps) {
         ) : (
           <div className="flex flex-col gap-4">
             {turns.map((t) => (
-              <TurnRow key={t.key} turn={t} />
+              <TurnRow key={t.key} turn={t} onSelect={onSelect} />
             ))}
           </div>
         )}

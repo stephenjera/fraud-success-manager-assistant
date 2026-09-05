@@ -6,12 +6,12 @@ import * as React from "react"
 
 import { Button } from "@/components/ui/button"
 import { cn } from "@/lib/utils"
-import type { SelectedQuery } from "@/lib/types"
+import type { SelectedQuery, Turn } from "@/lib/types"
 import { ChatPane } from "@/features/chat/ChatPane"
 import { useChat } from "@/features/chat/useChat"
 import { WorkspacePane } from "@/features/workspace/WorkspacePane"
 import { InsightsRail } from "@/features/insights/rail"
-import { CatalogPane } from "@/features/catalog/CatalogPane"
+import { RuleWorkspace } from "@/features/rules/workspace"
 
 type View = "workbench" | "catalog"
 
@@ -29,6 +29,22 @@ function App() {
     send,
     newConversation,
   } = useChat(setSelected)
+
+  // B10: a grounded chat turn clicked in the transcript drives the workspace
+  // to that turn's grounding. (The auto-follow path already resets the
+  // workspace when a newer turn grounds; this is the "older turn" case.)
+  const selectTurn = (t: Turn) => {
+    if (!t.grounding) return
+    setSelected({
+      message_id: t.message_id ?? "",
+      status: t.status ?? "success",
+      sql: t.grounding.sql,
+      explanation: t.grounding.explanation ?? null,
+      assumptions: t.grounding.assumptions ?? [],
+      flags: t.grounding.flags ?? [],
+      error: t.error ?? null,
+    })
+  }
 
   return (
     <div className="flex h-svh flex-col bg-background text-foreground">
@@ -73,7 +89,7 @@ function App() {
         {view === "workbench" ? (
           <main className="flex h-full min-h-0" aria-label="Workbench">
             <section className="flex h-full w-[340px] shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-background/40">
-              <ChatPane turns={turns} busy={busy} error={error} onSend={send} />
+              <ChatPane turns={turns} busy={busy} error={error} onSend={send} onSelect={selectTurn} />
             </section>
 
             <section className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-background/40">
@@ -100,7 +116,7 @@ function App() {
             </section>
           </main>
         ) : (
-          <CatalogPane refreshKey={String(insightsKey)} />
+          <RuleWorkspace refreshKey={String(insightsKey)} />
         )}
       </div>
     </div>
