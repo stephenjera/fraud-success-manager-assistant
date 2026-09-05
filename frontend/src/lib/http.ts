@@ -3,7 +3,8 @@
 // fetch is the path — no /api proxy prefix in the backend.
 
 export const API_BASE =
-  (import.meta.env.VITE_API_BASE as string | undefined) ?? "http://127.0.0.1:8000/v1"
+  (import.meta.env.VITE_API_BASE as string | undefined)
+  ?? (import.meta.env.DEV ? "http://127.0.0.1:8000/v1" : `${window.location.origin}/v1`)
 
 export class ApiError extends Error {
   code: string
