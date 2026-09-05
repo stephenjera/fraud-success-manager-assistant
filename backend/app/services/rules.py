@@ -305,11 +305,17 @@ def draft_rule(insight_id: str, *, title: str | None) -> dict[str, Any]:
     if ins is None:
         raise api_errors.not_found(f"Insight {insight_id!r} not found.")
     # P5: prefer model-proposed clause; fall back to SQL derivation.
-    if ins[2]:
-        where = core_rules.validate_where_clause(ins[2])
-    else:
-        where = core_rules.derive_where_clause(ins[1])
-    canonical = core_rules.validate_where_clause(where)
+    where = ins[2] if ins[2] else core_rules.derive_where_clause(ins[1])
+    try:
+        canonical = core_rules.validate_where_clause(where)
+    except core_rules.InvalidWhereClause as exc:
+        # A clause the FSM can fix (e.g. one that references the fraud label)
+        # is a 400, not a 500 — the gate fires before the rule row is written (A5).
+        raise api_errors.ApiError(
+            api_errors.SQL_REJECTED,
+            str(exc),
+            details={"offending_clause": where},
+        ) from exc
     chosen_title = title or ins[3] or "Unnamed rule"
     row = (
         _con()

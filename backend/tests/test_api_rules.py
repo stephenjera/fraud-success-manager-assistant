@@ -252,6 +252,50 @@ class TestDeploy:
         )
 
 
+class TestDraftInvalidClause400:
+    """A derived clause that trips the label gate is a 400, not a 500 (A5)."""
+
+    def test_derived_label_clause_is_sql_rejected(self, client, db_ok):
+        cid = client.post("/v1/conversations").json()["conversation_id"]
+        mid = client.post(
+            f"/v1/conversations/{cid}/messages",
+            json={"text": "How many large flagged ones?"},
+        ).json()["message_id"]
+        wait_until(
+            lambda: (
+                client.get(f"/v1/conversations/{cid}/messages/{mid}").json()["status"]
+                in ("success", "error")
+            )
+        )
+        revision_id = client.get(f"/v1/conversations/{cid}/messages/{mid}").json()[
+            "revisions"
+        ][0]
+        # Pin succeeds — the SQL itself is legal; the label clause is only
+        # caught at draft time, when the rule's WHERE is derived from it.
+        pin = client.post(
+            f"/v1/conversations/{cid}/insights",
+            json={
+                "message_id": mid,
+                "revision_id": revision_id,
+                "sql": (
+                    "SELECT COUNT(*) FROM transactions t "
+                    "JOIN fraud_labels fl ON fl.transaction_id = t.id "
+                    "WHERE t.amount_usd_cents > 100000 AND fl.is_fraud = 1"
+                ),
+            },
+        )
+        assert pin.status_code == 201, pin.text
+        insight_id = pin.json()["insight_id"]
+        r = client.post(f"/v1/insights/{insight_id}/draft-rule")
+        assert r.status_code == 400, r.text
+        err = r.json()["error"]
+        assert err["code"] == "SQL_REJECTED"
+        assert "is_fraud" in str(err.get("details"))
+        # The clause failed validation before INSERT — no rule row for this insight.
+        rules = client.get("/v1/rules").json()["items"]
+        assert all(row.get("source_insight_id") != insight_id for row in rules)
+
+
 if __name__ == "__main__":
     import pytest
 
