@@ -1,8 +1,8 @@
 # Phases 00 — Roadmap
 
-**Status:** P0–P4 + P3.5 done (2026-09-04). P5 done. Prompt supervisor added 2026-09-04.
+**Status:** P0–P4 + P3.5 done (2026-09-04). P5 done. Prompt supervisor added 2026-09-04. P6 done (2026-09-05, ADR-0017).
 
-Phases (order per the ADRs; P0–P4 done, P3.5 done, P5 done):
+Phases (order per the ADRs; P0–P6 done):
 
 - **P0 — Reckon & lock.** All ADRs frozen (`proposed` → `accepted`).
   Spec rewrites move to `docs/system-spec.md`. `architecture/*.md` stubs
@@ -59,6 +59,22 @@ Phases (order per the ADRs; P0–P4 done, P3.5 done, P5 done):
   `services/rules.draft_rule` prefers stored clause over derivation.
   Frontend renders proposal cards in chat and highlights proposals on
   the insights rail.  All five terminal types verified.
+- **P6 — Error-contract fixes + frontend redesign.** ADR-0017. P6a
+  fixes the backend contract the 2026-09 FSM evaluation
+  (`../ux/fsm-evaluation-findings.md`) found broken: 500s carry CORS and
+  leak no exception text; client mistakes are 4xx (bad SQL → 400
+  `SQL_REJECTED`, bad UUID → 404 `STATE_NOT_FOUND`); a rule clause
+  referencing `is_fraud` is refused by `core/rules` and by `draft-rule`
+  (no rule row created); pin validates its SQL. P6b replaces the
+  frontend shell: conversations rail + conversation panel + one rule
+  workspace (drawer opens in every status, WHERE-clause editor on the
+  existing `PATCH /v1/rules/{id}`, backtest detail), non-destructive
+  "New chat", refresh restores the session, all state API-hydrated,
+  errors surfaced from the contract.
+   **DoD:** every checkbox in `P6-error-contract-and-frontend-redesign.md`
+   passes — backend asserted by pytest, frontend verified by an interactive
+   session + chaos pass (see the P6 phase doc); all 15 evaluation findings
+   fixed or explicitly re-scoped.
 
 Each phase ends with a *verifiable DoD*, not a mood. "The code compiles"
 is not a DoD. "The `test_architecture.py` wall check passes and
@@ -67,7 +83,7 @@ is not a DoD. "The `test_architecture.py` wall check passes and
 Dependencies:
 
 ```
-P0 ──► P1 ──► P2 ──► P3 ──► P4
+P0 ──► P1 ──► P2 ──► P3 ──► P4 ──► P5 (P3.5 parallel) ──► P6
 ```
 
 Strictly sequential; each phase's DoD is a gate on the next. P2.5 is an
