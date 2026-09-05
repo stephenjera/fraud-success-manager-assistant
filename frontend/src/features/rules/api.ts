@@ -28,6 +28,12 @@ export const rulesApi = {
 
   get: (ruleId: string) => api.get<RuleDetail>(`/rules/${ruleId}`),
 
+  // Edit-and-own the clause. The freeze line (a backtest row already exists)
+  // is enforced by the backend with 409 RULE_ILLEGAL_TRANSITION; the UI also
+  // refuses to send it once `latest_backtest` is set.
+  patchWhereClause: (ruleId: string, where_clause: string) =>
+    api.patch<RuleDetail>(`/rules/${ruleId}`, { where_clause }),
+
   // The command — deterministic, never the LLM (spec §7.4). Returns the report.
   backtest: (ruleId: string, window?: "full" | "custom") =>
     api.post<BacktestResult>(`/rules/${ruleId}/backtest`, window ? { window } : null),

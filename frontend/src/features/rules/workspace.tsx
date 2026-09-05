@@ -12,6 +12,7 @@ import { ArrowLeft, Rocket, Search } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
+import { ResultsTable } from "@/components/ui/table"
 import { ApiError } from "@/lib/http"
 import type { BacktestResult, RuleCard, RuleDetail, RuleStatus } from "@/lib/types"
 import { rulesApi } from "./api"
@@ -42,6 +43,37 @@ function RuleDetailPane({
     error: null,
   })
   const [result, setResult] = React.useState<BacktestResult | null>(null)
+  const [clause, setClause] = React.useState(rule.where_clause)
+  const [savingClause, setSavingClause] = React.useState(false)
+  const [clauseError, setClauseError] = React.useState<string | null>(null)
+  const [clauseOffending, setClauseOffending] = React.useState<string | null>(null)
+
+  // Keep the editor in sync with the server's clause: a fresh detail (after a
+  // verb or a save) carries the canonical where_clause, so re-seed the draft.
+  React.useEffect(() => {
+    setClause(rule.where_clause)
+    setClauseError(null)
+    setClauseOffending(null)
+  }, [rule.rule_id, rule.status, rule.where_clause])
+
+  const saveClause = React.useCallback(async () => {
+    setSavingClause(true)
+    setClauseError(null)
+    setClauseOffending(null)
+    try {
+      await rulesApi.patchWhereClause(rule.rule_id, clause)
+      void onUpdated() // refetch detail in place; the re-seed effect syncs clause
+    } catch (e) {
+      if (e instanceof ApiError) {
+        setClauseError(e.message)
+        setClauseOffending((e.details as { offending_clause?: string } | null)?.offending_clause ?? null)
+      } else {
+        setClauseError("Could not save the clause.")
+      }
+    } finally {
+      setSavingClause(false)
+    }
+  }, [rule.rule_id, clause, onUpdated])
 
   // Re-fetch the full two-universe report for a rule that has a backtest.
   const loadBacktest = React.useCallback(() => {
@@ -114,10 +146,58 @@ function RuleDetailPane({
         <CardTitle className="text-xs uppercase tracking-widest text-muted-foreground">
           Detection rule
         </CardTitle>
-        <CardContent className="mt-1.5 overflow-x-auto rounded-lg border border-border bg-background p-3">
-          <code className="whitespace-pre-wrap break-words font-mono text-xs text-foreground/90">
-            {rule.where_clause}
-          </code>
+        <CardContent className="mt-1.5 space-y-2">
+          {/* B6: the clause is the rule. Editable while no backtest row
+              exists (the freeze line, rule-lifecycle.md). Once any backtest
+              is run the backend rejects a re-clause with 409, and we don't
+              even send it. */}
+          {rule.latest_backtest ? (
+            <>
+              <code className="block whitespace-pre-wrap break-words rounded-lg border border-border bg-background p-3 font-mono text-xs text-foreground/90">
+                {clause}
+              </code>
+              <p className="text-xs text-muted-foreground">
+                A backtest already exists against this clause. Re-draft from the insight to
+                change it — the clause and the report that justified it travel together.
+              </p>
+            </>
+          ) : (
+            <>
+              <textarea
+                value={clause}
+                onChange={(e) => setClause(e.target.value)}
+                spellCheck={false}
+                rows={Math.min(9, Math.max(3, clause.split("\n").length + 1))}
+                className="w-full resize-y rounded-lg border border-input bg-background py-2.5 px-3 font-mono text-[0.8rem] leading-relaxed text-foreground/90 outline-none transition-colors focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/40"
+                placeholder="… WHERE …"
+              />
+              <div className="flex items-center gap-2">
+                <Button size="sm" onClick={() => void saveClause()} disabled={savingClause}>
+                  {savingClause ? "Saving…" : "Save clause"}
+                </Button>
+                <span className="text-[0.65rem] text-muted-foreground">
+                  Editable while this rule is in <span className="font-mono">draft</span> with no
+                  backtest. After a backtest, re-draft from the insight.
+                </span>
+              </div>
+            </>
+          )}
+
+          {clauseError ? (
+            <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-foreground/90">
+              <div>
+                <span className="font-medium text-destructive">Clause rejected.</span> {clauseError}
+              </div>
+              {clauseOffending ? (
+                <div className="font-mono break-words">
+                  <span className="text-[0.65rem] uppercase tracking-wider text-muted-foreground">
+                    offending clause:{" "}
+                  </span>
+                  {clauseOffending}
+                </div>
+              ) : null}
+            </div>
+          ) : null}
         </CardContent>
       </Card>
 
@@ -144,16 +224,17 @@ function RuleDetailPane({
           </CardTitle>
           <CardContent className="mt-1.5">
             {lo && fu ? (
-              <div className="grid grid-cols-4 gap-2 text-center">
+              <div className="grid grid-cols-4 gap-2">
                 {[
-                  ["Precision", ratio(lo.metrics.precision)],
-                  ["Recall", ratio(lo.metrics.recall)],
-                  ["FPR", ratio(lo.metrics.false_positive_rate)],
-                  ["Lift", lift(lo.metrics.lift)],
-                ].map(([k, v]) => (
-                  <div key={k} className="rounded-lg border border-border bg-background px-2 py-2">
+                  ["Precision", ratio(lo.metrics.precision), "Share of flagged transactions that are actually fraud"],
+                  ["Recall", ratio(lo.metrics.recall), "Share of real fraud the rule catches"],
+                  ["FPR", ratio(lo.metrics.false_positive_rate), "Share of clean transactions the rule flags by mistake"],
+                  ["Lift", lift(lo.metrics.lift), "How much better than the base fraud rate (1.0× = no signal)"],
+                ].map(([k, v, cap]) => (
+                  <div key={k} className="flex flex-col rounded-lg border border-border bg-background p-2 text-center">
                     <div className="text-[0.6rem] uppercase tracking-widest text-muted-foreground">{k}</div>
                     <div className="font-mono text-sm tabular-nums">{v}</div>
+                    <div className="mt-1 leading-snug text-[0.6rem] text-muted-foreground">{cap}</div>
                   </div>
                 ))}
               </div>
@@ -162,6 +243,51 @@ function RuleDetailPane({
                 {rule.latest_backtest?.window ?? "full"} window · loading full report…
               </p>
             )}
+            {lo && fu ? (
+              <div className="mt-3">
+                <div className="text-[0.6rem] uppercase tracking-widest text-muted-foreground">
+                  Temporal stability
+                </div>
+                <div className="mt-1 grid grid-cols-2 gap-2">
+                  <div className="rounded-lg border border-border bg-background px-3 py-2">
+                    <div className="text-[0.6rem] text-muted-foreground">earlier slice</div>
+                    <div className="font-mono text-sm tabular-nums">
+                      P {ratio(result?.temporal_stability.earlier_slice.precision)} · R{" "}
+                      {ratio(result?.temporal_stability.earlier_slice.recall)}
+                    </div>
+                  </div>
+                  <div className="rounded-lg border border-border bg-background px-3 py-2">
+                    <div className="text-[0.6rem] text-muted-foreground">later slice</div>
+                    <div className="font-mono text-sm tabular-nums">
+                      P {ratio(result?.temporal_stability.later_slice.precision)} · R{" "}
+                      {ratio(result?.temporal_stability.later_slice.recall)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : null}
+          </CardContent>
+        </Card>
+      ) : null}
+
+      {result ? (
+        <Card className="p-4">
+          <CardTitle className="text-xs uppercase tracking-widest text-muted-foreground">
+            Eyeball the matches
+          </CardTitle>
+          <CardContent className="mt-2">
+            <ResultsTable
+              columns={result.sample.columns}
+              rows={result.sample.rows}
+              empty="No matched rows in the sample."
+            />
+            {lo && fu ? (
+              <div className="mt-2 text-xs text-muted-foreground">
+                {lo.coverage.matched_count.toLocaleString()} match · out of{" "}
+                {fu.coverage.total_rows.toLocaleString()} rows ·{" "}
+                {fu.coverage.total_fraud.toLocaleString()} fraud in basis
+              </div>
+            ) : null}
           </CardContent>
         </Card>
       ) : null}
@@ -195,7 +321,13 @@ function RuleDetailPane({
         )}
         {rule.status === "deployed" && (
           <p className="text-xs text-muted-foreground">
-            Deployed as <code className="font-mono">{rule.deployment?.external_rule_id ?? "—"}</code>.
+            Deployed at{" "}
+            <time className="font-medium">
+              {rule.deployment?.deployed_at
+                ? new Date(rule.deployment.deployed_at).toLocaleString()
+                : ""}
+            </time>{" "}
+            — external rule <code className="font-mono">{rule.deployment?.external_rule_id ?? "—"}</code>.
           </p>
         )}
         {rule.status === "rejected" && (
