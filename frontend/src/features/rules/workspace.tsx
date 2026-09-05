@@ -13,7 +13,7 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { ResultsTable } from "@/components/ui/table"
-import { ApiError } from "@/lib/http"
+import { ApiErrorBlock, toContractError, type ContractError } from "@/lib/error-block"
 import type { BacktestResult, RuleCard, RuleDetail, RuleStatus } from "@/lib/types"
 import { rulesApi } from "./api"
 import { cn } from "@/lib/utils"
@@ -38,38 +38,30 @@ function RuleDetailPane({
   onClose: () => void
   onUpdated: () => void
 }) {
-  const [verb, setVerb] = React.useState<{ running: string; error: string | null }>({
+  const [verb, setVerb] = React.useState<{ running: string; error: ContractError | null }>({
     running: "",
     error: null,
   })
   const [result, setResult] = React.useState<BacktestResult | null>(null)
   const [clause, setClause] = React.useState(rule.where_clause)
   const [savingClause, setSavingClause] = React.useState(false)
-  const [clauseError, setClauseError] = React.useState<string | null>(null)
-  const [clauseOffending, setClauseOffending] = React.useState<string | null>(null)
+  const [clauseError, setClauseError] = React.useState<ContractError | null>(null)
 
   // Keep the editor in sync with the server's clause: a fresh detail (after a
   // verb or a save) carries the canonical where_clause, so re-seed the draft.
   React.useEffect(() => {
     setClause(rule.where_clause)
     setClauseError(null)
-    setClauseOffending(null)
   }, [rule.rule_id, rule.status, rule.where_clause])
 
   const saveClause = React.useCallback(async () => {
     setSavingClause(true)
     setClauseError(null)
-    setClauseOffending(null)
     try {
       await rulesApi.patchWhereClause(rule.rule_id, clause)
       void onUpdated() // refetch detail in place; the re-seed effect syncs clause
     } catch (e) {
-      if (e instanceof ApiError) {
-        setClauseError(e.message)
-        setClauseOffending((e.details as { offending_clause?: string } | null)?.offending_clause ?? null)
-      } else {
-        setClauseError("Could not save the clause.")
-      }
+      setClauseError(toContractError(e, "Could not save the clause.", "offending_clause"))
     } finally {
       setSavingClause(false)
     }
@@ -108,7 +100,7 @@ function RuleDetailPane({
         setVerb({ running: "", error: null })
         void onUpdated()
       } catch (e) {
-        setVerb({ running: "", error: e instanceof ApiError ? `${e.code} — ${e.message}` : `${label} failed.` })
+        setVerb({ running: "", error: toContractError(e, `${label} failed.`, "offending_sql") })
       }
     },
     [onUpdated],
@@ -184,19 +176,7 @@ function RuleDetailPane({
           )}
 
           {clauseError ? (
-            <div className="space-y-1 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-foreground/90">
-              <div>
-                <span className="font-medium text-destructive">Clause rejected.</span> {clauseError}
-              </div>
-              {clauseOffending ? (
-                <div className="font-mono break-words">
-                  <span className="text-[0.65rem] uppercase tracking-wider text-muted-foreground">
-                    offending clause:{" "}
-                  </span>
-                  {clauseOffending}
-                </div>
-              ) : null}
-            </div>
+            <ApiErrorBlock label="Clause rejected." error={clauseError} />
           ) : null}
         </CardContent>
       </Card>
@@ -293,9 +273,7 @@ function RuleDetailPane({
       ) : null}
 
       {verb.error ? (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-foreground/90">
-          <span className="font-medium text-destructive">Error.</span> {verb.error}
-        </div>
+        <ApiErrorBlock error={verb.error} />
       ) : null}
 
       <div className="flex items-center gap-2">
@@ -352,7 +330,7 @@ function RuleWorkspace({ refreshKey }: RuleWorkspaceProps) {
     rulesApi
       .list(s === "all" ? undefined : s)
       .then((items) => setRules(items))
-      .catch((e) => setError(e instanceof ApiError ? e.message : "Could not load rules."))
+      .catch((e) => setError(e instanceof Error ? e.message : "Could not load rules."))
       .finally(() => setLoading(false))
   }, [])
 
@@ -373,7 +351,7 @@ function RuleWorkspace({ refreshKey }: RuleWorkspaceProps) {
       .then((d) => live && setDetail(d))
       .catch((e) => {
         if (!live) return
-        setError(e instanceof ApiError ? e.message : "Could not open this rule.")
+        setError(e instanceof Error ? e.message : "Could not open this rule.")
         setOpenId(null)
       })
     return () => {
@@ -394,7 +372,7 @@ function RuleWorkspace({ refreshKey }: RuleWorkspaceProps) {
           rulesApi
             .get(openId)
             .then(setDetail)
-            .catch((e) => setError(e instanceof ApiError ? e.message : "Could not reload this rule."))
+            .catch((e) => setError(e instanceof Error ? e.message : "Could not reload this rule."))
           load(status)
         }}
       />

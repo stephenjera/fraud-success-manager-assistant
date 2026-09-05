@@ -8,8 +8,8 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Card, CardContent, CardTitle } from "@/components/ui/card"
 import { ResultsTable } from "@/components/ui/table"
-import { ApiError } from "@/lib/http"
 import type { QueryResult, Revision, SelectedQuery } from "@/lib/types"
+import { ApiErrorBlock, toContractError, type ContractError } from "@/lib/error-block"
 import { workspaceApi } from "./api"
 
 export interface WorkspacePaneProps {
@@ -26,7 +26,16 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
   const [revisionId, setRevisionId] = React.useState<string | null>(null)
   const [running, setRunning] = React.useState(false)
   const [pinned, setPinned] = React.useState(false)
-  const [error, setError] = React.useState<string | null>(null)
+  // B9: one structured failure, rendered as a contract block. The message is
+  // the server's own message; the offending SQL (and code hint) come from the
+  // contract `details`.
+  const [error, setError] = React.useState<ContractError | null>(null)
+  const [stale, setStale] = React.useState(false)
+
+  const note = React.useCallback((e: unknown, fallback: string) => {
+    setError(toContractError(e, fallback, "offending_sql"))
+  }, [])
+  const clearError = React.useCallback(() => setError(null), [])
 
   const resetFor = (id: string | null) => {
     if (id) return
@@ -37,6 +46,7 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
     setSql("")
     setError(null)
     setPinned(false)
+    setStale(false)
   }
 
   const materialize = React.useCallback(
@@ -55,16 +65,19 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
   const execute = React.useCallback(async () => {
     if (!conversationId || !selected || !sql?.trim()) return
     setRunning(true)
-    setError(null)
+    clearError()
     setPinned(false)
+    setStale(false) // a fresh attempt is running; we'll mark it stale only if it fails
     try {
       await materialize(conversationId, selected.message_id, sql!)
+      setStale(false)
     } catch (e) {
-      setError(e instanceof ApiError ? `${e.code} — ${e.message}` : "Re-run failed.")
+      setStale(true) // keep the last good rows; flag them as stale below
+      note(e, "Re-run failed.")
     } finally {
       setRunning(false)
     }
-  }, [conversationId, selected, sql, materialize])
+  }, [conversationId, selected, sql, materialize, clearError, note])
 
   // Materialize the results the first time a grounded query is selected from chat.
   React.useEffect(() => {
@@ -74,12 +87,16 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
     }
     setSql(selected.sql)
     setPinned(false)
-    setError(null)
+    clearError()
     setResults(null)
+    setStale(false) // switching turns drops the previous run's rows
     if (conversationId && selected.sql) {
-      void materialize(conversationId, selected.message_id, selected.sql).catch(() =>
-        // non-fatal — the SQL stays editable even if loading rows fails
-        undefined,
+      void materialize(conversationId, selected.message_id, selected.sql).then(
+        () => setStale(false),
+        () => {
+          // non-fatal — the SQL stays editable; rows are absent, so not stale
+          setStale(false)
+        },
       )
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -90,7 +107,7 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
 
   const pin = React.useCallback(async () => {
     if (!canAct || !conversationId || !selected || !sql) return
-    setError(null)
+    clearError()
     try {
       await workspaceApi.pinInsight(conversationId, {
         message_id: selected.message_id,
@@ -101,9 +118,9 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
       setPinned(true)
       onPinned()
     } catch (e) {
-      setError(e instanceof ApiError ? `${e.code} — ${e.message}` : "Could not pin.")
+      note(e, "Could not pin.")
     }
-  }, [canAct, conversationId, selected, revisionId, sql, onPinned])
+  }, [canAct, conversationId, selected, revisionId, sql, onPinned, clearError, note])
 
   if (!selected) {
     return (
@@ -128,8 +145,16 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
             Edit the query, re-run it, pin the result.
           </p>
         </div>
-        {dirty ? (
-          <Button variant="ghost" size="xs" onClick={() => setSql(selected.sql ?? "")}>
+        {dirty || error || stale ? (
+          <Button
+            variant="ghost"
+            size="xs"
+            onClick={() => {
+              setSql(selected.sql ?? "")
+              clearError()
+              setStale(false)
+            }}
+          >
             <RotateCcw aria-hidden /> Reset to agent query
           </Button>
         ) : null}
@@ -168,13 +193,15 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
         ) : null}
       </div>
 
-      {error ? (
-        <div className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-foreground/90">
-          <span className="font-medium text-destructive">Error.</span> {error}
-        </div>
-      ) : null}
+      {error ? <ApiErrorBlock error={error} /> : null}
 
       <div className="min-h-0 flex-1 overflow-y-auto rounded-xl border border-border bg-background/40 p-3">
+        {stale && results ? (
+          <div className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-xs text-foreground/90">
+            <span className="font-medium">Last successful run.</span> Results from the last
+            successful run — the query you edited is not what produced these rows.
+          </div>
+        ) : null}
         {results ? (
           <ResultsTable
             columns={results.columns}
@@ -183,9 +210,7 @@ function WorkspacePane({ conversationId, selected, onPinned }: WorkspacePaneProp
             rowCap={results.row_cap}
           />
         ) : (
-          <p className="py-8 text-center text-sm text-muted-foreground">
-            No results yet — re-run to load rows.
-          </p>
+          <p className="py-8 text-center text-sm text-muted-foreground">No results yet — re-run to load rows.</p>
         )}
       </div>
 
