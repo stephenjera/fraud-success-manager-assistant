@@ -136,6 +136,8 @@ def pin_insight(
 
 def get_insight(conversation_id: str, insight_id: str) -> dict[str, Any]:
     """The full insight detail (scoped to the conversation)."""
+    if not store.is_uuid(insight_id):
+        raise api_errors.not_found(f"Insight {insight_id!r} not in this conversation.")
     row = (
         _con()
         .execute(
@@ -196,6 +198,8 @@ def patch_insight(
     insight_id: str, *, sql: str | None, explanation: str | None
 ) -> dict[str, Any]:
     """Edit the pin before drafting (PATCH /v1/insights/{id})."""
+    if not store.is_uuid(insight_id):
+        raise api_errors.not_found(f"Insight {insight_id!r} not found.")
     row = (
         _con()
         .execute(
@@ -214,6 +218,8 @@ def patch_insight(
 
 def delete_insight(insight_id: str) -> None:
     """Cascade-delete the insight (and its rules)."""
+    if not store.is_uuid(insight_id):
+        raise api_errors.not_found(f"Insight {insight_id!r} not found.")
     cur = _con().execute("DELETE FROM insights WHERE id=%s", (insight_id,))
     if cur.rowcount == 0:
         raise api_errors.not_found(f"Insight {insight_id!r} not found.")
@@ -225,6 +231,8 @@ def delete_insight(insight_id: str) -> None:
 
 
 def _get_rule(rule_id: str) -> dict[str, Any]:
+    if not store.is_uuid(rule_id):
+        raise api_errors.not_found(f"Rule {rule_id!r} not found.")
     row = (
         _con()
         .execute(
@@ -282,6 +290,8 @@ def draft_rule(insight_id: str, *, title: str | None) -> dict[str, Any]:
     # The insight must exist and the rule must not already have been
     # drafted from it (a second draft from the same insight would be a
     # sibling rule, not a transition — the rule-lifecycle doc makes that explicit).
+    if not store.is_uuid(insight_id):
+        raise api_errors.not_found(f"Insight {insight_id!r} not found.")
     ins = (
         _con()
         .execute(
@@ -482,6 +492,8 @@ def patch_rule(
 
 def delete_rule(rule_id: str) -> None:
     """Cascade-delete the rule (and its backtest/deployment rows)."""
+    if not store.is_uuid(rule_id):
+        raise api_errors.not_found(f"Rule {rule_id!r} not found.")
     cur = _con().execute("DELETE FROM rules WHERE id=%s", (rule_id,))
     if cur.rowcount == 0:
         raise api_errors.not_found(f"Rule {rule_id!r} not found.")

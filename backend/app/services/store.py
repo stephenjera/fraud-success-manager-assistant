@@ -8,6 +8,7 @@ Small read/write helpers for the four P1 tables (``conversations``, ``runs``,
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
@@ -35,6 +36,15 @@ class MessageRow:
     revisions: list[str]
 
 
+def is_uuid(value: str) -> bool:
+    """True when ``value`` is a syntactically valid uuid (path-param guard, A3)."""
+    try:
+        uuid.UUID(value)
+    except (ValueError, AttributeError, TypeError):
+        return False
+    return True
+
+
 def _con() -> psycopg.Connection:
     return psycopg.connect(settings.appstate_dsn, autocommit=True)
 
@@ -50,6 +60,8 @@ def create_conversation() -> tuple[str, datetime]:
 
 
 def get_conversation(conversation_id: str) -> dict[str, Any] | None:
+    if not is_uuid(conversation_id):
+        return None
     with _con() as con:
         row = con.execute(
             "SELECT id::text, created_at, last_active FROM conversations WHERE id=%s",
@@ -79,6 +91,8 @@ def list_conversations() -> list[dict[str, Any]]:
 
 
 def delete_conversation(conversation_id: str) -> None:
+    if not is_uuid(conversation_id):
+        raise NotFound(conversation_id)
     with _con() as con:
         cur = con.execute("DELETE FROM conversations WHERE id=%s", (conversation_id,))
         if cur.rowcount == 0:
@@ -178,6 +192,10 @@ def add_rerun(
 
 
 def get_message(conversation_id: str, message_id: str) -> MessageRow:
+    if not is_uuid(message_id):
+        raise NotFound(message_id)
+    if not is_uuid(conversation_id):
+        raise NotFound(conversation_id)
     with _con() as con:
         row = con.execute(
             "SELECT id::text, run_id::text, conversation_id::text, status, created_at, grounding, error "
@@ -222,6 +240,8 @@ def list_messages(conversation_id: str) -> list[dict[str, Any]]:
 
 
 def get_run(run_id: str) -> dict[str, Any] | None:
+    if not is_uuid(run_id):
+        return None
     with _con() as con:
         row = con.execute(
             "SELECT id::text, conversation_id::text, message_id::text, status, created_at FROM runs WHERE id=%s",

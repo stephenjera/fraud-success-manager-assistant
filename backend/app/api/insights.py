@@ -77,6 +77,8 @@ def list_insights(conversation_id: str) -> dict[str, Any]:
 @router.get("/insights/{insight_id}")
 def get_insight(insight_id: str) -> dict[str, Any]:
     """Full insight detail (the rail card)."""
+    if not store.is_uuid(insight_id):
+        raise errors.not_found(f"Insight {insight_id!r} not found.")
     # The contract scopes insights to a conversation, but the detail
     # lookup is by id — resolve the owning conversation from the row,
     # then hand off to the service (which re-checks the scope).
