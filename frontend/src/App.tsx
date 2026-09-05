@@ -1,38 +1,29 @@
-// The shell: a top bar to switch between the three-pane workbench and the
-// Rule Catalog (spec §13 keeps the catalog a separate view). The Frame 1 ↔ 2
-// swap lives in the rail: when a rule's metrics panel is expanded, the rail
-// column widens — the center workspace narrows (center narrows, not overlays).
+// The shell (B2): four strips, no view switch.
+//   Conversations | Chat + Pinned insights | Workspace | Rule workspace
+// The insights rail is a section of the conversation column (its metrics and
+// lifecycle verbs live in the rule workspace). One refreshKey keeps the
+// derived panes (insights, rules list) honest after a pin / draft / verb.
 import * as React from "react"
 
-import { Button } from "@/components/ui/button"
-import { cn } from "@/lib/utils"
 import type { SelectedQuery, Turn } from "@/lib/types"
 import { ChatPane } from "@/features/chat/ChatPane"
 import { useChat } from "@/features/chat/useChat"
 import { WorkspacePane } from "@/features/workspace/WorkspacePane"
 import { InsightsRail } from "@/features/insights/rail"
 import { RuleWorkspace } from "@/features/rules/workspace"
-
-type View = "workbench" | "catalog"
+import { ConversationsRail } from "@/features/conversations/rail"
 
 function App() {
-  const [view, setView] = React.useState<View>("workbench")
   const [selected, setSelected] = React.useState<SelectedQuery | null>(null)
-  const [railWide, setRailWide] = React.useState(false) // Frame 2 (metrics panel)
-  const [insightsKey, setInsightsKey] = React.useState(0)
+  const [refreshKey, setRefreshKey] = React.useState(0)
+  const bump = React.useCallback(() => setRefreshKey((k) => k + 1), [])
 
-  const {
-    conversationId,
-    turns,
-    busy,
-    error,
-    send,
-    newConversation,
-  } = useChat(setSelected)
+  const { conversationId, turns, busy, error, send, newConversation, selectConversation } =
+    useChat(setSelected)
 
-  // B10: a grounded chat turn clicked in the transcript drives the workspace
-  // to that turn's grounding. (The auto-follow path already resets the
-  // workspace when a newer turn grounds; this is the "older turn" case.)
+  // B10: a grounded turn clicked in the transcript drives the workspace to
+  // that turn's grounding (the "older turn" case; the auto-follow path
+  // already resets the workspace when a newer turn grounds).
   const selectTurn = (t: Turn) => {
     if (!t.grounding) return
     setSelected({
@@ -48,76 +39,38 @@ function App() {
 
   return (
     <div className="flex h-svh flex-col bg-background text-foreground">
-      <header className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+      <header className="flex shrink-0 items-center border-b border-border px-4 py-2">
         <span className="text-sm font-semibold tracking-tight">Fraud Insight &amp; Rule Copilot</span>
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-0.5 rounded-lg border border-border p-0.5" role="tablist" aria-label="Views">
-            {(["workbench", "catalog"] as const).map((v) => (
-              <button
-                key={v}
-                role="tab"
-                aria-selected={view === v}
-                onClick={() => setView(v)}
-                className={cn(
-                  "rounded-md px-3 py-1 text-xs font-medium transition-colors",
-                  view === v
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
-                )}
-              >
-                {v === "workbench" ? "Workbench" : "Rules Catalog"}
-              </button>
-            ))}
-          </div>
-          {view === "workbench" ? (
-            <Button
-              variant="ghost"
-              size="xs"
-              onClick={() => {
-                newConversation()
-                setSelected(null)
-                setRailWide(false)
-              }}
-            >
-              New chat
-            </Button>
-          ) : null}
-        </div>
       </header>
 
-      <div className="min-h-0 flex-1 gap-3 p-3">
-        {view === "workbench" ? (
-          <main className="flex h-full min-h-0" aria-label="Workbench">
-            <section className="flex h-full w-[340px] shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-background/40">
-              <ChatPane turns={turns} busy={busy} error={error} onSend={send} onSelect={selectTurn} />
-            </section>
+      <div className="flex min-h-0 flex-1">
+        <ConversationsRail
+          activeId={conversationId}
+          onSelect={selectConversation}
+          onNew={newConversation}
+          refreshKey={String(refreshKey)}
+        />
 
-            <section className="flex h-full min-w-0 flex-1 flex-col overflow-hidden rounded-xl border border-border bg-background/40">
-              <WorkspacePane
-                conversationId={conversationId}
-                selected={selected}
-                onPinned={() => setInsightsKey((k) => k + 1)}
-              />
-            </section>
+        <div className="flex h-full w-96 min-h-0 shrink-0 flex-col overflow-hidden border-r border-border">
+          <div className="min-h-0 flex-[3] overflow-hidden">
+            <ChatPane turns={turns} busy={busy} error={error} onSend={send} onSelect={selectTurn} />
+          </div>
+          <div className="min-h-0 flex-[2] overflow-hidden border-t border-border bg-background/40">
+            <InsightsRail
+              conversationId={conversationId}
+              refreshKey={String(refreshKey)}
+              onRuleAction={bump}
+            />
+          </div>
+        </div>
 
-            <section
-              aria-hidden={!railWide}
-              className={cn(
-                "flex h-full shrink-0 flex-col overflow-hidden rounded-xl border border-border bg-background/40 transition-[width] duration-200",
-                railWide ? "w-[520px]" : "w-[320px]",
-              )}
-            >
-              <InsightsRail
-                conversationId={conversationId}
-                expanded={railWide}
-                onToggleExpanded={setRailWide}
-                refreshKey={String(insightsKey)}
-              />
-            </section>
-          </main>
-        ) : (
-          <RuleWorkspace refreshKey={String(insightsKey)} />
-        )}
+        <div className="flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden border-r border-border bg-background/40">
+          <WorkspacePane conversationId={conversationId} selected={selected} onPinned={bump} />
+        </div>
+
+        <div className="flex h-full w-[520px] min-h-0 shrink-0 flex-col overflow-hidden bg-background/40">
+          <RuleWorkspace refreshKey={String(refreshKey)} />
+        </div>
       </div>
     </div>
   )

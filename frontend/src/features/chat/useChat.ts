@@ -1,9 +1,17 @@
 // Chat session state (ADR-0009: owns its API calls + SSE stream + turn state).
 // The stream is live activity; the durable fact is the message DTO (ADR-0011).
-import { useCallback, useRef, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 
 import type { ActivityItem, MessageStatus, SelectedQuery, Turn } from "@/lib/types"
 import { chatApi, openRunEvents } from "./api"
+
+// One query param, one history.replaceState per transition — no router (T8).
+const conversationParam = (id: string | null): string =>
+  new URLSearchParams(id ? { conversation: id } : {}).toString()
+const setConversationUrl = (id: string | null) => {
+  const qs = conversationParam(id)
+  history.replaceState(null, "", qs ? `?${qs}` : location.pathname)
+}
 
 function pushTool(starts: Map<string, ActivityItem>, tool: string) {
   let item = starts.get(tool)
@@ -82,7 +90,10 @@ export function useChat(onSelected?: (sel: SelectedQuery | null) => void) {
         // Lazily create the conversation on the first question.
         const cid: string =
           conversationId ?? (await chatApi.createConversation()).conversation_id
-        if (!conversationId) setConversationId(cid)
+        if (!conversationId) {
+          setConversationId(cid)
+          setConversationUrl(cid) // refresh can restore even a never-switched chat
+        }
         setTurns((prev) => [
           ...prev,
           { key: userKey, role: "user", text: q },
@@ -145,6 +156,7 @@ export function useChat(onSelected?: (sel: SelectedQuery | null) => void) {
     setConversationId(null)
     setError(null)
     onSelected?.(null)
+    setConversationUrl(null) // drop ?conversation= (non-destructive: rail lists it back)
   }, [onSelected])
 
   const selectConversation = useCallback(
@@ -154,6 +166,7 @@ export function useChat(onSelected?: (sel: SelectedQuery | null) => void) {
       setTurns([])
       setError(null)
       onSelected?.(null)
+      setConversationUrl(id) // one ?conversation=<id>, refresh restores it
       try {
         const detail = await chatApi.getConversation(id)
         const loaded: Turn[] = []
@@ -189,6 +202,16 @@ export function useChat(onSelected?: (sel: SelectedQuery | null) => void) {
     },
     [onSelected],
   )
+
+  // On first mount, restore the conversation from ?conversation= (refresh /
+  // direct link). Runs once; the select above also re-writes the same param.
+  const restored = useRef(false)
+  useEffect(() => {
+    if (restored.current) return
+    restored.current = true
+    const id = new URLSearchParams(location.search).get("conversation")
+    if (id) void selectConversation(id)
+  }, [selectConversation])
 
   return { conversationId, turns, busy, error, send, newConversation, selectConversation }
 }
