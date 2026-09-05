@@ -37,6 +37,10 @@ _ALLOWED_TABLES = frozenset(
 # would smuggle a second query past the "single expression" contract.
 _FORBIDDEN_EXPR = (exp.Subquery, exp.CTE)
 
+# The outcome column a rule clause must never filter on: a rule keyed off the
+# fraud label is circular (it predicts fraud from fraud). Rules key off behavior.
+_LABEL_COLUMNS = frozenset({"is_fraud"})
+
 
 class InvalidWhereClause(ValueError):
     """The clause is not a safe single expression over the join basis."""
@@ -134,6 +138,11 @@ def validate_where_clause(clause: str) -> str:
     for table in table_names(clause):
         if table.lower() not in _ALLOWED_TABLES:
             raise InvalidWhereClause(f"Table {table!r} is outside the ADR-0014 basis.")
+    if {col.name.lower() for col in cond.find_all(exp.Column)} & _LABEL_COLUMNS:
+        raise InvalidWhereClause(
+            "Rule clauses must not reference the fraud label (is_fraud); "
+            "rules must be based on behavioral signals only."
+        )
     return cond.sql(dialect=_DIALECT)
 
 
