@@ -60,10 +60,6 @@ moves). The chat pane stays the chat pane.
 - **`npm run build` + `npm run lint` clean after every task.** That is
   the gate; there is no automated test runner to run instead.
 - **No new dependencies.** `package.json` unchanged.
-- **No `git add` of `docs/ux/`.** That tree stays untracked.
-- **Commit per task**, message `feat(frontend): <what>`, with the
-  `Co-authored-by: Copilot <223556219+Copilot@users.noreply.github.com>`
-  trailer.
 - **Preserve `components/ui/`.** Every existing shadcn primitive stays;
   we only add or remove feature- and shell-level files.
 - **The wire contract is frozen** (`../architecture/api-contract.md`):
